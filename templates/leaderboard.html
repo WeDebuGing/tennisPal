@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">Leaderboard 🏆</h1>
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-tennis-50 text-tennis-800">
+            <tr>
+                <th class="text-left px-4 py-3">#</th>
+                <th class="text-left px-2 py-3">Player</th>
+                <th class="text-center px-2 py-3">NTRP</th>
+                <th class="text-center px-2 py-3">W-L</th>
+                <th class="text-center px-2 py-3">ELO</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for p in players %}
+            <tr class="border-t border-gray-50 hover:bg-gray-50">
+                <td class="px-4 py-3 font-medium text-gray-400">{{ loop.index }}</td>
+                <td class="px-2 py-3">
+                    <a href="{{ url_for('player_profile', user_id=p.id) }}" class="text-tennis-700 font-medium hover:underline">{{ p.name }}</a>
+                </td>
+                <td class="px-2 py-3 text-center">{{ p.ntrp or '–' }}</td>
+                <td class="px-2 py-3 text-center">{{ p.wins }}-{{ p.losses }}</td>
+                <td class="px-2 py-3 text-center text-gray-400">{{ p.elo }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

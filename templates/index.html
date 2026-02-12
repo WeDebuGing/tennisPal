@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1 class="text-xl font-bold">Looking to Play 🎾</h1>
+    <a href="{{ url_for('leaderboard') }}" class="text-sm text-tennis-600 font-medium">Leaderboard →</a>
+</div>
+
+{% if posts %}
+<div class="space-y-3">
+    {% for post in posts %}
+    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+        <div class="flex items-start justify-between">
+            <div>
+                <a href="{{ url_for('player_profile', user_id=post.user_id) }}" class="font-semibold text-tennis-700 hover:underline">{{ post.author.name }}</a>
+                {% if post.author.ntrp %}<span class="ml-1 text-xs bg-tennis-100 text-tennis-700 px-2 py-0.5 rounded-full">{{ post.author.ntrp }}</span>{% endif %}
+            </div>
+            <span class="text-xs text-gray-400">{{ post.match_type }}</span>
+        </div>
+        <div class="mt-2 text-sm text-gray-600">
+            <div class="font-medium text-gray-900">📅 {{ post.play_date.strftime('%a, %b %d') }} · {{ post.start_time }}–{{ post.end_time }}</div>
+            <div>📍 {{ post.court }}</div>
+            {% if post.level_min or post.level_max %}
+            <div>🎯 Level {{ post.level_min or '?' }}–{{ post.level_max or '?' }}</div>
+            {% endif %}
+        </div>
+        {% if current_user.is_authenticated and current_user.id != post.user_id %}
+        <form method="POST" action="{{ url_for('claim_post', post_id=post.id) }}" class="mt-3">
+            <button type="submit" class="w-full bg-tennis-500 text-white py-2 rounded-xl text-sm font-semibold hover:bg-tennis-600 transition">I'm In! 🙋</button>
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-12 text-gray-400">
+    <p class="text-4xl mb-2">🎾</p>
+    <p>No posts yet. Be the first!</p>
+</div>
+{% endif %}
+{% endblock %}

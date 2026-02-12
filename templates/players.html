@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">Players</h1>
+<form method="GET" class="mb-4">
+    <select name="day" onchange="this.form.submit()" class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-tennis-500 focus:border-transparent">
+        <option value="">All days</option>
+        {% for i in range(7) %}
+        <option value="{{ i }}" {% if selected_day == i|string %}selected{% endif %}>{{ DAY_NAMES[i] }}</option>
+        {% endfor %}
+    </select>
+</form>
+<div class="space-y-2">
+    {% for p in players %}
+    <a href="{{ url_for('player_profile', user_id=p.id) }}" class="block bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:border-tennis-300 transition">
+        <div class="flex items-center justify-between">
+            <div>
+                <span class="font-semibold">{{ p.name }}</span>
+                {% if p.ntrp %}<span class="ml-1 text-xs bg-tennis-100 text-tennis-700 px-2 py-0.5 rounded-full">{{ p.ntrp }}</span>{% endif %}
+            </div>
+            <span class="text-sm text-gray-400">{{ p.wins }}W–{{ p.losses }}L</span>
+        </div>
+        {% if p.availabilities %}
+        <div class="mt-1 text-xs text-gray-500">
+            {% for a in p.availabilities[:3] %}{{ a.display }}{% if not loop.last %} · {% endif %}{% endfor %}
+        </div>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endblock %}

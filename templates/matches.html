@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">My Matches</h1>
+
+{% if pending_invites %}
+<h2 class="font-bold text-sm text-gray-500 uppercase tracking-wide mb-2">Pending Invites</h2>
+<div class="space-y-2 mb-6">
+    {% for inv in pending_invites %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-2xl p-4">
+        <div class="font-medium">{{ inv.from_user.name }} wants to play</div>
+        <div class="text-sm text-gray-600 mt-1">📅 {{ inv.play_date.strftime('%a, %b %d') }} · {{ inv.start_time }}–{{ inv.end_time }}</div>
+        <div class="text-sm text-gray-600">📍 {{ inv.court }} · {{ inv.match_type }}</div>
+        <form method="POST" action="{{ url_for('respond_invite', invite_id=inv.id) }}" class="flex gap-2 mt-3">
+            <button name="action" value="accept" class="flex-1 bg-tennis-500 text-white py-2 rounded-xl text-sm font-semibold hover:bg-tennis-600">Accept</button>
+            <button name="action" value="decline" class="flex-1 bg-gray-200 text-gray-700 py-2 rounded-xl text-sm font-semibold hover:bg-gray-300">Decline</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if sent_invites %}
+<h2 class="font-bold text-sm text-gray-500 uppercase tracking-wide mb-2">Sent Invites</h2>
+<div class="space-y-2 mb-6">
+    {% for inv in sent_invites %}
+    <div class="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm">
+        <div class="font-medium">→ {{ inv.to_user.name }}</div>
+        <div class="text-sm text-gray-500">{{ inv.play_date.strftime('%a, %b %d') }} · {{ inv.start_time }}–{{ inv.end_time }} · <span class="text-yellow-600">Pending</span></div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<h2 class="font-bold text-sm text-gray-500 uppercase tracking-wide mb-2">Matches</h2>
+{% if matches %}
+<div class="space-y-2">
+    {% for m in matches %}
+    <a href="{{ url_for('match_detail', match_id=m.id) }}" class="block bg-white rounded-2xl shadow-sm border border-gray-100 p-4 hover:border-tennis-300 transition">
+        <div class="flex items-center justify-between">
+            <div class="font-medium">vs {{ m.opponent(current_user.id).name }}</div>
+            <span class="text-xs px-2 py-0.5 rounded-full
+                {% if m.status == 'completed' %}bg-tennis-100 text-tennis-700
+                {% elif m.status == 'scheduled' %}bg-blue-100 text-blue-700
+                {% elif m.status == 'cancelled' %}bg-red-100 text-red-700
+                {% else %}bg-gray-100 text-gray-700{% endif %}">{{ m.status }}</span>
+        </div>
+        <div class="text-sm text-gray-500 mt-1">{{ m.play_date.strftime('%a, %b %d') }} · {{ m.match_type }}{% if m.score %} · {{ m.score }}{% endif %}</div>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-center py-8 text-gray-400">No matches yet.</p>
+{% endif %}
+{% endblock %}

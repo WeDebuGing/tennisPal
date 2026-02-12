@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">Notifications</h1>
+{% if notifications %}
+<div class="space-y-2">
+    {% for n in notifications %}
+    <div class="bg-white rounded-xl border border-gray-100 shadow-sm p-4 {% if not n.read %}border-l-4 border-l-tennis-500{% endif %}">
+        <p class="text-sm">{{ n.message }}</p>
+        <p class="text-xs text-gray-400 mt-1">{{ n.created_at.strftime('%b %d, %I:%M%p') }}</p>
+        {% if n.link %}<a href="{{ n.link }}" class="text-xs text-tennis-600 hover:underline">View →</a>{% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-center py-8 text-gray-400">No notifications.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<h1 class="text-xl font-bold mb-4">Weekly Availability</h1>
+
+{% if slots %}
+<div class="space-y-2 mb-6">
+    {% for s in slots %}
+    <div class="flex items-center justify-between bg-white rounded-xl border border-gray-100 shadow-sm px-4 py-3">
+        <span class="text-sm">{{ s.display }}</span>
+        <form method="POST" action="{{ url_for('delete_availability', slot_id=s.id) }}">
+            <button class="text-red-400 hover:text-red-600 text-sm">✕</button>
+        </form>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<form method="POST" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 space-y-3">
+    <h2 class="font-bold text-sm">Add Slot</h2>
+    <select name="day_of_week" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-tennis-500 focus:border-transparent">
+        {% for i in range(7) %}
+        <option value="{{ i }}">{{ DAY_NAMES[i] }}</option>
+        {% endfor %}
+    </select>
+    <div class="grid grid-cols-2 gap-3">
+        <div>
+            <label class="block text-xs text-gray-500 mb-1">From</label>
+            <input type="time" name="start_time" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-tennis-500 focus:border-transparent">
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 mb-1">To</label>
+            <input type="time" name="end_time" required class="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-tennis-500 focus:border-transparent">
+        </div>
+    </div>
+    <button type="submit" class="w-full bg-tennis-600 text-white py-3 rounded-xl font-semibold hover:bg-tennis-700 transition">Add</button>
+</form>
+{% endblock %}

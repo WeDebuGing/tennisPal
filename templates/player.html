@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-5 mb-4">
+    <h1 class="text-2xl font-bold">{{ player.name }}</h1>
+    <div class="flex flex-wrap gap-2 mt-2">
+        {% if player.ntrp %}<span class="text-sm bg-tennis-100 text-tennis-700 px-3 py-1 rounded-full">NTRP {{ player.ntrp }}</span>{% endif %}
+        <span class="text-sm bg-gray-100 text-gray-700 px-3 py-1 rounded-full">ELO {{ player.elo }}</span>
+    </div>
+    <div class="grid grid-cols-4 gap-2 mt-4 text-center">
+        <div><div class="text-xl font-bold text-tennis-600">{{ player.wins }}</div><div class="text-xs text-gray-500">Wins</div></div>
+        <div><div class="text-xl font-bold text-red-500">{{ player.losses }}</div><div class="text-xs text-gray-500">Losses</div></div>
+        <div><div class="text-xl font-bold">{{ player.matches_played }}</div><div class="text-xs text-gray-500">Played</div></div>
+        <div><div class="text-xl font-bold">{{ player.reliability }}%</div><div class="text-xs text-gray-500">Reliable</div></div>
+    </div>
+    {% if current_user.is_authenticated and current_user.id != player.id %}
+    <a href="{{ url_for('send_invite', to_user_id=player.id) }}" class="mt-4 block w-full bg-tennis-500 text-white py-2 rounded-xl text-center text-sm font-semibold hover:bg-tennis-600 transition">Invite to Play</a>
+    {% endif %}
+</div>
+
+{% if h2h %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+    <h2 class="font-bold mb-2">Head to Head</h2>
+    <p class="text-sm">You {{ h2h.wins }}W – {{ h2h.losses }}L vs {{ player.name }}</p>
+</div>
+{% endif %}
+
+{% if player.availabilities %}
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+    <h2 class="font-bold mb-2">Weekly Availability</h2>
+    <div class="space-y-1">
+        {% for a in player.availabilities %}
+        <div class="text-sm text-gray-600">{{ a.display }}</div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+    <h2 class="font-bold mb-2">Match History</h2>
+    {% if match_history %}
+    <div class="space-y-2">
+        {% for m in match_history %}
+        <div class="flex items-center justify-between text-sm border-b border-gray-50 pb-2">
+            <div>
+                <span class="{% if m.winner_id == player.id %}text-tennis-600 font-medium{% elif m.winner_id %}text-red-500{% else %}text-gray-500{% endif %}">
+                    {% if m.winner_id == player.id %}W{% elif m.winner_id %}L{% else %}–{% endif %}
+                </span>
+                vs {{ m.opponent(player.id).name }}
+            </div>
+            <div class="text-gray-400">
+                {{ m.score or m.status }} · {{ m.play_date.strftime('%b %d') }}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-gray-400">No matches yet.</p>
+    {% endif %}
+</div>
+{% endblock %}
