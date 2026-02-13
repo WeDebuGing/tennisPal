@@ -69,6 +69,35 @@ def me():
     return jsonify(user=user.to_dict())
 
 
+# ── Profile ──
+
+@app.route('/api/profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    uid = int(get_jwt_identity())
+    user = User.query.get(uid)
+    if not user:
+        return jsonify(error='User not found.'), 404
+    data = request.get_json() or {}
+    ALLOWED = ('name', 'phone', 'ntrp', 'city')
+    for field in ALLOWED:
+        if field in data:
+            val = data[field]
+            if field == 'name':
+                val = (val or '').strip()
+                if not val:
+                    return jsonify(error='Name cannot be empty.'), 400
+            if field == 'ntrp' and val is not None:
+                val = float(val)
+            if field == 'phone':
+                val = (val or '').strip() or None
+                if val and User.query.filter(User.phone == val, User.id != uid).first():
+                    return jsonify(error='Phone already registered.'), 409
+            setattr(user, field, val)
+    db.session.commit()
+    return jsonify(user=user.to_dict())
+
+
 # ── Feed (Posts) ──
 
 @app.route('/api/posts')
@@ -84,15 +113,26 @@ def get_posts():
 @jwt_required()
 def create_post():
     uid = int(get_jwt_identity())
-    data = request.get_json()
+    data = request.get_json() or {}
+    # Bug #10: validate required fields
+    missing = [f for f in ('play_date', 'start_time', 'end_time') if not data.get(f)]
+    if missing:
+        return jsonify(error=f'Missing required fields: {", ".join(missing)}'), 400
+    # Bug #11: validate play_date is not in the past
+    try:
+        play_date = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify(error='Invalid play_date format. Use YYYY-MM-DD.'), 400
+    if play_date < date.today():
+        return jsonify(error='play_date must be today or in the future.'), 400
     p = LookingToPlay(
         user_id=uid,
-        play_date=datetime.strptime(data['play_date'], '%Y-%m-%d').date(),
+        play_date=play_date,
         start_time=data['start_time'], end_time=data['end_time'],
         court=data.get('court', 'Flexible') or 'Flexible',
         match_type=data.get('match_type', 'singles'),
-        level_min=float(data['level_min']) if data.get('level_min') else None,
-        level_max=float(data['level_max']) if data.get('level_max') else None,
+        level_min=float(data.get('level_min')) if data.get('level_min') else None,
+        level_max=float(data.get('level_max')) if data.get('level_max') else None,
     )
     db.session.add(p)
     db.session.commit()
@@ -174,8 +214,17 @@ def get_availability():
 @jwt_required()
 def add_availability():
     uid = int(get_jwt_identity())
-    data = request.get_json()
-    a = Availability(user_id=uid, day_of_week=int(data['day_of_week']),
+    data = request.get_json() or {}
+    # Bug #12: validate day_of_week
+    try:
+        dow = int(data.get('day_of_week', -1))
+    except (TypeError, ValueError):
+        return jsonify(error='day_of_week must be an integer 0-6.'), 400
+    if dow < 0 or dow > 6:
+        return jsonify(error='day_of_week must be between 0 (Monday) and 6 (Sunday).'), 400
+    if not data.get('start_time') or not data.get('end_time'):
+        return jsonify(error='start_time and end_time are required.'), 400
+    a = Availability(user_id=uid, day_of_week=dow,
                      start_time=data['start_time'], end_time=data['end_time'])
     db.session.add(a)
     db.session.commit()
@@ -405,6 +454,9 @@ def submit_score(match_id):
     match = Match.query.get_or_404(match_id)
     if uid not in (match.player1_id, match.player2_id):
         return jsonify(error='Not authorized.'), 403
+    # Bug #14: prevent score overwrite after confirmation
+    if match.score_confirmed:
+        return jsonify(error='Score already confirmed. Cannot resubmit.'), 400
     data = request.get_json()
 
     # Support both structured and legacy free-text submission
