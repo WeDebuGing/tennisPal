@@ -3,6 +3,7 @@ from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification
+from notifications import notify_user
 from datetime import datetime, date, timedelta
 import os
 import json
@@ -113,10 +114,12 @@ def claim_post(post_id):
                   play_date=post.play_date, match_type=post.match_type)
     db.session.add(match)
     user = User.query.get(uid)
-    n = Notification(user_id=post.user_id,
-                     message=f"{user.name} claimed your post for {post.play_date.strftime('%b %d')}!")
+    post_owner = User.query.get(post.user_id)
+    msg = f"{user.name} claimed your post for {post.play_date.strftime('%b %d')}!"
+    n = Notification(user_id=post.user_id, message=msg)
     db.session.add(n)
     db.session.commit()
+    notify_user(post_owner, msg, subject="Someone claimed your post!")
     return jsonify(match=match.to_dict()), 201
 
 
@@ -210,10 +213,12 @@ def send_invite():
     )
     db.session.add(inv)
     user = User.query.get(uid)
-    n = Notification(user_id=to_user_id,
-                     message=f"{user.name} invited you to play on {inv.play_date.strftime('%b %d')}!")
+    target_user = User.query.get(to_user_id)
+    msg = f"{user.name} invited you to play on {inv.play_date.strftime('%b %d')}!"
+    n = Notification(user_id=to_user_id, message=msg)
     db.session.add(n)
     db.session.commit()
+    notify_user(target_user, msg, subject="New match invite!")
     return jsonify(invite=inv.to_dict()), 201
 
 
@@ -229,10 +234,12 @@ def accept_invite(invite_id):
                   play_date=inv.play_date, match_type=inv.match_type)
     db.session.add(match)
     user = User.query.get(uid)
-    n = Notification(user_id=inv.from_user_id,
-                     message=f"{user.name} accepted your invite for {inv.play_date.strftime('%b %d')}!")
+    inviter = User.query.get(inv.from_user_id)
+    msg = f"{user.name} accepted your invite for {inv.play_date.strftime('%b %d')}!"
+    n = Notification(user_id=inv.from_user_id, message=msg)
     db.session.add(n)
     db.session.commit()
+    notify_user(inviter, msg, subject="Invite accepted!")
     return jsonify(match=match.to_dict())
 
 
@@ -245,9 +252,12 @@ def decline_invite(invite_id):
         return jsonify(error='Not authorized.'), 403
     inv.status = 'declined'
     user = User.query.get(uid)
-    n = Notification(user_id=inv.from_user_id, message=f"{user.name} declined your invite.")
+    inviter = User.query.get(inv.from_user_id)
+    msg = f"{user.name} declined your invite."
+    n = Notification(user_id=inv.from_user_id, message=msg)
     db.session.add(n)
     db.session.commit()
+    notify_user(inviter, msg, subject="Invite declined")
     return jsonify(ok=True)
 
 
@@ -429,10 +439,12 @@ def submit_score(match_id):
     match.score_disputed = False
     opp_id = match.player2_id if match.player1_id == uid else match.player1_id
     user = User.query.get(uid)
-    n = Notification(user_id=opp_id,
-                     message=f"{user.name} submitted a score: {match.score}. Please confirm.")
+    opponent = User.query.get(opp_id)
+    msg = f"{user.name} submitted a score: {match.score}. Please confirm."
+    n = Notification(user_id=opp_id, message=msg)
     db.session.add(n)
     db.session.commit()
+    notify_user(opponent, msg, subject="Score submitted — please confirm")
     return jsonify(match=match.to_dict())
 
 
@@ -488,6 +500,34 @@ def get_notifications():
     Notification.query.filter_by(user_id=uid, read=False).update({'read': True})
     db.session.commit()
     return jsonify(notifications=result)
+
+
+# ── Settings ──
+
+@app.route('/api/settings', methods=['GET'])
+@jwt_required()
+def get_settings():
+    user = User.query.get(int(get_jwt_identity()))
+    return jsonify(settings={
+        'notify_sms': user.notify_sms,
+        'notify_email': user.notify_email,
+    })
+
+
+@app.route('/api/settings', methods=['PUT'])
+@jwt_required()
+def update_settings():
+    user = User.query.get(int(get_jwt_identity()))
+    data = request.get_json()
+    if 'notify_sms' in data:
+        user.notify_sms = bool(data['notify_sms'])
+    if 'notify_email' in data:
+        user.notify_email = bool(data['notify_email'])
+    db.session.commit()
+    return jsonify(settings={
+        'notify_sms': user.notify_sms,
+        'notify_email': user.notify_email,
+    })
 
 
 # ── Init ──

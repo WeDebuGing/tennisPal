@@ -14,6 +14,7 @@ import Leaderboard from './pages/Leaderboard';
 import AvailabilityPage from './pages/AvailabilityPage';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -44,6 +45,7 @@ function AppRoutes() {
           <Route path="/availability" element={<AvailabilityPage />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/profile" element={<Profile />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>
