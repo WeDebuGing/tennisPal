@@ -25,11 +25,17 @@ export interface MatchInvite {
   court: string; match_type: string; status: string; created_at: string;
 }
 
+export interface SetScore {
+  p1: number; p2: number;
+  tiebreak?: { p1: number; p2: number };
+}
+
 export interface Match {
   id: number;
   player1: { id: number; name: string }; player2: { id: number; name: string };
-  play_date: string; match_type: string; status: string;
-  score: string | null; score_submitted_by: number | null;
+  play_date: string; match_type: string; match_format?: string; status: string;
+  score: string | null; sets?: SetScore[] | null;
+  score_submitted_by: number | null;
   score_confirmed: boolean; score_disputed: boolean;
   winner_id: number | null; winner_name: string | null; created_at: string;
 }

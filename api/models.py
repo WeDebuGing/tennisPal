@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, date
+import json
 
 db = SQLAlchemy()
 
@@ -158,6 +159,8 @@ class Match(db.Model):
     match_type = db.Column(db.String(20), default='singles')
     status = db.Column(db.String(20), default='scheduled')
     score = db.Column(db.String(100), nullable=True)
+    sets = db.Column(db.Text, nullable=True)  # JSON: [{"p1":6,"p2":4},{"p1":6,"p2":3}]
+    match_format = db.Column(db.String(30), default='best_of_3')  # best_of_3, pro_set, best_of_5
     score_submitted_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     score_confirmed = db.Column(db.Boolean, default=False)
     score_disputed = db.Column(db.Boolean, default=False)
@@ -174,8 +177,9 @@ class Match(db.Model):
             'player1': {'id': self.player1.id, 'name': self.player1.name} if self.player1 else None,
             'player2': {'id': self.player2.id, 'name': self.player2.name} if self.player2 else None,
             'play_date': self.play_date.isoformat(),
-            'match_type': self.match_type, 'status': self.status,
-            'score': self.score, 'score_submitted_by': self.score_submitted_by,
+            'match_type': self.match_type, 'match_format': self.match_format, 'status': self.status,
+            'score': self.score, 'sets': json.loads(self.sets) if self.sets else None,
+            'score_submitted_by': self.score_submitted_by,
             'score_confirmed': self.score_confirmed, 'score_disputed': self.score_disputed,
             'winner_id': self.winner_id,
             'winner_name': self.winner.name if self.winner else None,

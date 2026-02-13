@@ -5,6 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification
 from datetime import datetime, date, timedelta
 import os
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
@@ -273,6 +274,130 @@ def get_match(match_id):
     return jsonify(match=match.to_dict())
 
 
+def validate_structured_score(sets_data, match_format):
+    """Validate structured score and return (score_string, winner_side, error)."""
+    if not sets_data or not isinstance(sets_data, list):
+        return None, None, 'Sets data required.'
+
+    valid_formats = ('best_of_3', 'best_of_5', 'pro_set')
+    if match_format not in valid_formats:
+        return None, None, f'Invalid match format. Must be one of: {", ".join(valid_formats)}'
+
+    if match_format == 'pro_set':
+        if len(sets_data) != 1:
+            return None, None, 'Pro set requires exactly 1 set.'
+    elif match_format == 'best_of_3':
+        if len(sets_data) < 2 or len(sets_data) > 3:
+            return None, None, 'Best of 3 requires 2 or 3 sets.'
+    elif match_format == 'best_of_5':
+        if len(sets_data) < 3 or len(sets_data) > 5:
+            return None, None, 'Best of 5 requires 3 to 5 sets.'
+
+    p1_sets_won = 0
+    p2_sets_won = 0
+    score_parts = []
+
+    for i, s in enumerate(sets_data):
+        p1 = s.get('p1')
+        p2 = s.get('p2')
+        tb = s.get('tiebreak')
+
+        if p1 is None or p2 is None:
+            return None, None, f'Set {i+1}: scores required for both players.'
+        if not isinstance(p1, int) or not isinstance(p2, int):
+            return None, None, f'Set {i+1}: scores must be integers.'
+        if p1 < 0 or p1 > 7 or p2 < 0 or p2 > 7:
+            return None, None, f'Set {i+1}: scores must be 0-7.'
+
+        # Validate set score logic
+        if match_format == 'pro_set':
+            # Pro set: first to 8, win by 2 (or tiebreak at 8-8 → 9-8)
+            if p1 < 8 and p2 < 8:
+                return None, None, 'Pro set: at least one player must reach 8 games.'
+        else:
+            # Normal set validation
+            high, low = max(p1, p2), min(p1, p2)
+            if high < 6:
+                return None, None, f'Set {i+1}: at least one player must reach 6 games.'
+            if high == 6 and low > 4 and low != 6:
+                return None, None, f'Set {i+1}: invalid score.'
+            if high == 7:
+                if low not in (5, 6):
+                    return None, None, f'Set {i+1}: 7 games only valid with 5 or 6 opponent games.'
+                if low == 6 and tb is None:
+                    return None, None, f'Set {i+1}: tiebreak score required for 7-6 sets.'
+                if low == 6 and tb is not None:
+                    if not isinstance(tb, dict) or 'p1' not in tb or 'p2' not in tb:
+                        return None, None, f'Set {i+1}: tiebreak must have p1 and p2 scores.'
+                    tb_p1, tb_p2 = tb['p1'], tb['p2']
+                    if not isinstance(tb_p1, int) or not isinstance(tb_p2, int):
+                        return None, None, f'Set {i+1}: tiebreak scores must be integers.'
+                    tb_high, tb_low = max(tb_p1, tb_p2), min(tb_p1, tb_p2)
+                    if tb_high < 7:
+                        return None, None, f'Set {i+1}: tiebreak winner must reach at least 7.'
+                    if tb_high - tb_low < 2 and tb_high < 7:
+                        return None, None, f'Set {i+1}: tiebreak must be won by 2 points.'
+                    # Check tiebreak winner matches set winner
+                    if p1 == 7 and tb_p1 <= tb_p2:
+                        return None, None, f'Set {i+1}: tiebreak winner must match set winner.'
+                    if p2 == 7 and tb_p2 <= tb_p1:
+                        return None, None, f'Set {i+1}: tiebreak winner must match set winner.'
+
+        if p1 > p2:
+            p1_sets_won += 1
+        elif p2 > p1:
+            p2_sets_won += 1
+        else:
+            return None, None, f'Set {i+1}: set cannot be a tie.'
+
+        part = f'{p1}-{p2}'
+        if tb is not None and p1 + p2 == 13:  # 7-6
+            part += f'({min(tb["p1"], tb["p2"])})'
+        score_parts.append(part)
+
+    # Validate match winner
+    if match_format == 'pro_set':
+        winner_side = 'p1' if p1_sets_won > p2_sets_won else 'p2'
+    elif match_format == 'best_of_3':
+        sets_to_win = 2
+        if p1_sets_won == sets_to_win:
+            winner_side = 'p1'
+        elif p2_sets_won == sets_to_win:
+            winner_side = 'p2'
+        else:
+            return None, None, 'Match is incomplete: no player has won enough sets.'
+        # Match should end when someone wins
+        running_p1 = running_p2 = 0
+        for i, s in enumerate(sets_data):
+            if s['p1'] > s['p2']:
+                running_p1 += 1
+            else:
+                running_p2 += 1
+            if running_p1 == sets_to_win or running_p2 == sets_to_win:
+                if i != len(sets_data) - 1:
+                    return None, None, 'Too many sets: match already decided.'
+    elif match_format == 'best_of_5':
+        sets_to_win = 3
+        if p1_sets_won == sets_to_win:
+            winner_side = 'p1'
+        elif p2_sets_won == sets_to_win:
+            winner_side = 'p2'
+        else:
+            return None, None, 'Match is incomplete: no player has won enough sets.'
+        running_p1 = running_p2 = 0
+        for i, s in enumerate(sets_data):
+            if s['p1'] > s['p2']:
+                running_p1 += 1
+            else:
+                running_p2 += 1
+            if running_p1 == sets_to_win or running_p2 == sets_to_win:
+                if i != len(sets_data) - 1:
+                    return None, None, 'Too many sets: match already decided.'
+
+    score_string = ', '.join(score_parts)
+    return score_string, winner_side, None
+
+
 @app.route('/api/matches/<int:match_id>/score', methods=['POST'])
 @jwt_required()
 def submit_score(match_id):
@@ -281,8 +406,23 @@ def submit_score(match_id):
     if uid not in (match.player1_id, match.player2_id):
         return jsonify(error='Not authorized.'), 403
     data = request.get_json()
-    match.score = data['score'].strip()
-    match.winner_id = int(data['winner_id'])
+
+    # Support both structured and legacy free-text submission
+    if 'sets' in data:
+        sets_data = data['sets']
+        match_format = data.get('match_format', 'best_of_3')
+        score_string, winner_side, error = validate_structured_score(sets_data, match_format)
+        if error:
+            return jsonify(error=error), 400
+        match.sets = json.dumps(sets_data)
+        match.match_format = match_format
+        match.score = score_string
+        # Auto-determine winner
+        match.winner_id = match.player1_id if winner_side == 'p1' else match.player2_id
+    else:
+        match.score = data['score'].strip()
+        match.winner_id = int(data['winner_id'])
+
     match.score_submitted_by = uid
     match.status = 'completed'
     match.score_confirmed = False
