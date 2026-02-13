@@ -197,10 +197,10 @@ export default function ScoreSubmission({ match, onSubmit }: Props) {
       {/* Format selector */}
       <div>
         <label className="text-sm text-gray-500 block mb-1">Match Format</label>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {(Object.keys(FORMAT_LABELS) as MatchFormat[]).map(fmt => (
             <button key={fmt} onClick={() => handleFormatChange(fmt)}
-              className={`flex-1 text-sm rounded-lg p-2 border transition ${format === fmt ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'}`}>
+              className={`text-sm rounded-lg p-2.5 border transition-colors ${format === fmt ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:border-green-400 active:bg-gray-50'}`}>
               {FORMAT_LABELS[fmt]}
             </button>
           ))}
