@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -7,7 +7,15 @@ from datetime import datetime, date, timedelta
 import os
 import json
 
-app = Flask(__name__)
+# In release mode, serve the built frontend from frontend/dist
+RELEASE_MODE = os.environ.get('TENNISPAL_RELEASE', '').lower() in ('1', 'true', 'yes')
+FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
+
+if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
+    app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path='')
+else:
+    app = Flask(__name__)
+
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-prod')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tennispal.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -490,10 +498,25 @@ def get_notifications():
     return jsonify(notifications=result)
 
 
+# ── Static / SPA catch-all (release mode only) ──
+
+if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
+    @app.route('/')
+    @app.route('/<path:path>')
+    def serve_frontend(path=''):
+        # Serve actual files (JS, CSS, images) if they exist
+        full = os.path.join(FRONTEND_DIST, path)
+        if path and os.path.isfile(full):
+            return send_from_directory(FRONTEND_DIST, path)
+        # Otherwise serve index.html for SPA client-side routing
+        return send_from_directory(FRONTEND_DIST, 'index.html')
+
+
 # ── Init ──
 
 with app.app_context():
     db.create_all()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)
+    debug = not RELEASE_MODE
+    app.run(debug=debug, port=5001)
