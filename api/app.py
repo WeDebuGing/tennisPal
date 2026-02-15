@@ -576,6 +576,99 @@ def get_notifications():
     return jsonify(notifications=result)
 
 
+# ── Matchmaking ──
+
+@app.route('/api/matchmaking/suggestions')
+@jwt_required()
+def matchmaking_suggestions():
+    uid = int(get_jwt_identity())
+    current_user = User.query.get(uid)
+    if not current_user:
+        return jsonify(error='User not found'), 404
+
+    candidates = User.query.filter(User.id != uid).all()
+    my_avails = Availability.query.filter_by(user_id=uid).all()
+
+    # Recent matches (last 30 days) for variety scoring
+    recent_cutoff = date.today() - timedelta(days=30)
+    recent_matches_q = Match.query.filter(
+        Match.play_date >= recent_cutoff,
+        Match.score_confirmed == True,
+        (Match.player1_id == uid) | (Match.player2_id == uid)
+    ).all()
+    recent_opponent_counts = {}
+    for m in recent_matches_q:
+        opp = m.player2_id if m.player1_id == uid else m.player1_id
+        recent_opponent_counts[opp] = recent_opponent_counts.get(opp, 0) + 1
+
+    suggestions = []
+    for c in candidates:
+        reasons = []
+
+        # Elo proximity (max 30 pts)
+        elo_diff = abs((current_user.elo or 1200) - (c.elo or 1200))
+        elo_score = max(0, 30 - elo_diff / 10)
+        if elo_diff <= 100:
+            reasons.append('Similar Elo')
+
+        # NTRP similarity (max 20 pts)
+        ntrp_score = 0
+        if current_user.ntrp and c.ntrp:
+            ntrp_diff = abs(current_user.ntrp - c.ntrp)
+            ntrp_score = max(0, 20 - ntrp_diff * 10)
+            if ntrp_diff <= 0.5:
+                reasons.append('Similar NTRP level')
+
+        # Availability overlap (max 25 pts)
+        c_avails = Availability.query.filter_by(user_id=c.id).all()
+        overlap_minutes = 0
+        for ma in my_avails:
+            for ca in c_avails:
+                if ma.day_of_week == ca.day_of_week:
+                    ms, me = int(ma.start_time.replace(':', '')), int(ma.end_time.replace(':', ''))
+                    cs, ce = int(ca.start_time.replace(':', '')), int(ca.end_time.replace(':', ''))
+                    ov_start = max(ms, cs)
+                    ov_end = min(me, ce)
+                    if ov_end > ov_start:
+                        # rough minute calc
+                        h1, m1 = divmod(ov_start, 100)
+                        h2, m2 = divmod(ov_end, 100)
+                        overlap_minutes += (h2 * 60 + m2) - (h1 * 60 + m1)
+        avail_score = min(25, overlap_minutes / 60 * 5)
+        if overlap_minutes > 0:
+            reasons.append('Overlapping schedule')
+
+        # Variety (max 15 pts) — fewer recent matches = better
+        rec = recent_opponent_counts.get(c.id, 0)
+        variety_score = max(0, 15 - rec * 5)
+        if rec == 0:
+            reasons.append('New opponent')
+
+        # Reliability (max 10 pts)
+        rel = c.reliability
+        reliability_score = rel / 100 * 10
+        if rel >= 90:
+            reasons.append('Highly reliable')
+
+        match_score = round(elo_score + ntrp_score + avail_score + variety_score + reliability_score, 1)
+
+        suggestions.append({
+            'id': c.id,
+            'name': c.name,
+            'ntrp': c.ntrp,
+            'elo': c.elo or 1200,
+            'match_score': match_score,
+            'reasons': reasons,
+            'elo_diff': elo_diff,
+            'recent_matches': rec,
+            'availability_overlap': overlap_minutes if overlap_minutes > 0 else None,
+            'reliability': rel,
+        })
+
+    suggestions.sort(key=lambda s: s['match_score'], reverse=True)
+    return jsonify(suggestions=suggestions)
+
+
 # ── Settings ──
 
 @app.route('/api/settings', methods=['GET'])
