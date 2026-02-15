@@ -115,11 +115,9 @@ def get_posts():
 def create_post():
     uid = int(get_jwt_identity())
     data = request.get_json() or {}
-    # Bug #10: validate required fields
     missing = [f for f in ('play_date', 'start_time', 'end_time') if not data.get(f)]
     if missing:
         return jsonify(error=f'Missing required fields: {", ".join(missing)}'), 400
-    # Bug #11: validate play_date is not in the past
     try:
         play_date = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
     except ValueError:
@@ -216,7 +214,6 @@ def get_availability():
 def add_availability():
     uid = int(get_jwt_identity())
     data = request.get_json() or {}
-    # Bug #12: validate day_of_week
     try:
         dow = int(data.get('day_of_week', -1))
     except (TypeError, ValueError):
@@ -459,7 +456,6 @@ def submit_score(match_id):
     match = Match.query.get_or_404(match_id)
     if uid not in (match.player1_id, match.player2_id):
         return jsonify(error='Not authorized.'), 403
-    # Bug #14: prevent score overwrite after confirmation
     if match.score_confirmed:
         return jsonify(error='Score already confirmed. Cannot resubmit.'), 400
     data = request.get_json()
