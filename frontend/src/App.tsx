@@ -19,6 +19,7 @@ import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
+import Settings from './pages/Settings';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -60,6 +61,7 @@ function AppRoutes() {
           <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/admin/login" element={<AdminLogin />} />
+          <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </main>

@@ -3,12 +3,24 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import api from '../api/client';
 import { Post } from '../types';
+import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const { user } = useAuth();
 
-  useEffect(() => { api.get('/posts').then(r => setPosts(r.data.posts)); }, []);
+  const load = () => {
+    setLoading(true);
+    setError('');
+    api.get('/posts')
+      .then(r => setPosts(r.data.posts))
+      .catch(() => setError('Failed to load posts'))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => { load(); }, []);
 
   const claim = async (id: number) => {
     await api.post(`/posts/${id}/claim`);
@@ -22,28 +34,31 @@ export default function Home() {
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-green-700">🎾 Looking to Play</h1>
-        <Link to="/notifications" className="text-2xl">🔔</Link>
+        <Link to="/notifications" className="text-2xl hover:scale-110 transition-transform">🔔</Link>
       </div>
-      {posts.length === 0 && <p className="text-gray-500 text-center mt-8">No posts yet. Be the first!</p>}
-      <div className="space-y-3">
-        {posts.map(p => (
-          <div key={p.id} className="bg-white rounded-xl shadow p-4 border-l-4 border-green-500">
-            <div className="flex justify-between items-start">
-              <div>
-                <Link to={`/players/${p.user_id}`} className="font-semibold text-green-700 hover:underline">{p.author_name}</Link>
-                {p.author_ntrp && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">NTRP {p.author_ntrp}</span>}
+      {loading ? <Spinner text="Loading posts..." /> :
+       error ? <ErrorBox message={error} onRetry={load} /> :
+       posts.length === 0 ? <EmptyState icon="📝" title="No posts yet" subtitle="Be the first to post — tap + below!" /> : (
+        <div className="space-y-3">
+          {posts.map(p => (
+            <div key={p.id} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500 active:bg-green-50 transition-colors">
+              <div className="flex justify-between items-start gap-2">
+                <div className="min-w-0">
+                  <Link to={`/players/${p.user_id}`} className="font-semibold text-green-700 hover:underline truncate">{p.author_name}</Link>
+                  {p.author_ntrp && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">NTRP {p.author_ntrp}</span>}
+                </div>
+                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full shrink-0">{p.match_type}</span>
               </div>
-              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{p.match_type}</span>
+              <p className="text-sm text-gray-600 mt-2">📅 {fmt(p.play_date)} · ⏰ {fmtTime(p.start_time)}–{fmtTime(p.end_time)}</p>
+              {p.court && <p className="text-sm text-gray-500">📍 {p.court}</p>}
+              {(p.level_min || p.level_max) && <p className="text-xs text-gray-400 mt-1">Level: {p.level_min}–{p.level_max}</p>}
+              {user && user.id !== p.user_id && (
+                <button onClick={() => claim(p.id)} className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors w-full sm:w-auto">I'm In! 🎾</button>
+              )}
             </div>
-            <p className="text-sm text-gray-600 mt-1">📅 {fmt(p.play_date)} · ⏰ {fmtTime(p.start_time)}–{fmtTime(p.end_time)}</p>
-            <p className="text-sm text-gray-500">📍 {p.court}</p>
-            {(p.level_min || p.level_max) && <p className="text-xs text-gray-400">Level: {p.level_min}–{p.level_max}</p>}
-            {user && user.id !== p.user_id && (
-              <button onClick={() => claim(p.id)} className="mt-2 bg-green-600 text-white text-sm px-4 py-1.5 rounded-lg hover:bg-green-700">I'm In! 🎾</button>
-            )}
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

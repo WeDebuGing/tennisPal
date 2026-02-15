@@ -17,6 +17,7 @@ export default function Profile() {
       </div>
       <Link to={`/players/${user.id}`} className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">View Full Profile</Link>
       <Link to="/availability" className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">📅 Manage Availability</Link>
+      <Link to="/settings" className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">🔔 Notification Settings</Link>
       <Link to="/leaderboard" className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">🏆 Leaderboard</Link>
       <button onClick={logout} className="w-full bg-red-100 text-red-600 rounded-xl p-4 font-semibold">Log Out</button>
     </div>
