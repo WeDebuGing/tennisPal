@@ -1,21 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../api/client';
-import { User } from '../types';
+import { usePlayer } from '../hooks/usePlayers';
+import { useSendInvite } from '../hooks/useMatches';
 
 export default function Invite() {
   const { id } = useParams();
   const nav = useNavigate();
-  const [player, setPlayer] = useState<User | null>(null);
+  const { data: player } = usePlayer(id);
+  const sendInvite = useSendInvite();
   const today = new Date().toISOString().split('T')[0];
   const [form, setForm] = useState({ play_date: today, start_time: '10:00', end_time: '12:00', court: 'TBD', match_type: 'singles' });
   const set = (k: string, v: string) => setForm({ ...form, [k]: v });
 
-  useEffect(() => { api.get(`/players/${id}`).then(r => setPlayer(r.data.player)); }, [id]);
-
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await api.post('/invites', { ...form, to_user_id: id });
+    await sendInvite.mutateAsync({ ...form, to_user_id: id });
     nav(`/players/${id}`);
   };
 

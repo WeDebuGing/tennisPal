@@ -1,7 +1,5 @@
-import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../api/client';
-import { User, Match } from '../types';
+import { usePlayer, useH2H } from '../hooks/usePlayers';
 import { useAuth } from '../context/AuthContext';
 import { Spinner, ErrorBox } from '../components/ui';
 
@@ -10,25 +8,11 @@ const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export default function PlayerProfile() {
   const { id } = useParams();
   const { user: me } = useAuth();
-  const [player, setPlayer] = useState<User & { match_history: Match[] } | null>(null);
-  const [h2h, setH2h] = useState<{ wins: number; losses: number; matches: Match[] } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: player, isLoading, error, refetch } = usePlayer(id);
+  const { data: h2h } = useH2H(id, me?.id);
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api.get(`/players/${id}`)
-      .then(r => setPlayer(r.data.player))
-      .catch(() => setError('Failed to load player'))
-      .finally(() => setLoading(false));
-    if (me) api.get(`/players/${id}/h2h`).then(r => setH2h(r.data.h2h)).catch(() => {});
-  };
-
-  useEffect(() => { load(); }, [id, me]);
-
-  if (loading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
-  if (error || !player) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error || 'Player not found'} onRetry={load} /></div>;
+  if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
+  if (error || !player) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error ? 'Failed to load player' : 'Player not found'} onRetry={refetch} /></div>;
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-4">

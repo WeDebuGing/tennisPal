@@ -1,30 +1,15 @@
-import { useEffect, useState } from 'react';
-import api from '../api/client';
-import { Notification } from '../types';
+import { useNotifications } from '../hooks/useNotifications';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Notifications() {
-  const [notes, setNotes] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api.get('/notifications')
-      .then(r => setNotes(r.data.notifications))
-      .catch(() => setError('Failed to load notifications'))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
+  const { data: notes, isLoading, error, refetch } = useNotifications();
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <h1 className="text-2xl font-bold text-green-700 mb-4">🔔 Notifications</h1>
-      {loading ? <Spinner text="Loading notifications..." /> :
-       error ? <ErrorBox message={error} onRetry={load} /> :
-       notes.length === 0 ? <EmptyState icon="🔔" title="All caught up!" subtitle="No notifications right now" /> : (
+      {isLoading ? <Spinner text="Loading notifications..." /> :
+       error ? <ErrorBox message="Failed to load notifications" onRetry={refetch} /> :
+       !notes?.length ? <EmptyState icon="🔔" title="All caught up!" subtitle="No notifications right now" /> : (
         <div className="space-y-2">
           {notes.map(n => (
             <div key={n.id} className={`bg-white rounded-xl shadow-sm p-4 transition-colors ${!n.read ? 'border-l-4 border-green-500' : ''}`}>

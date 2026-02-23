@@ -1,46 +1,15 @@
-import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useSettings, useUpdateSettings } from '../hooks/useSettings';
 
 export default function Settings() {
-  const { token } = useAuth();
-  const [notifySms, setNotifySms] = useState(false);
-  const [notifyEmail, setNotifyEmail] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const { data: settings, isLoading } = useSettings();
+  const updateMutation = useUpdateSettings();
 
-  useEffect(() => {
-    fetch('/api/settings', { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => r.json())
-      .then(d => {
-        setNotifySms(d.settings.notify_sms);
-        setNotifyEmail(d.settings.notify_email);
-        setLoaded(true);
-      });
-  }, [token]);
+  if (isLoading || !settings) return <div className="p-4 text-center text-gray-400">Loading...</div>;
 
-  const save = async (sms: boolean, email: boolean) => {
-    setSaving(true);
-    await fetch('/api/settings', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ notify_sms: sms, notify_email: email }),
-    });
-    setSaving(false);
+  const toggle = (key: 'notify_sms' | 'notify_email') => {
+    const updated = { ...settings, [key]: !settings[key] };
+    updateMutation.mutate(updated);
   };
-
-  const toggleSms = () => {
-    const v = !notifySms;
-    setNotifySms(v);
-    save(v, notifyEmail);
-  };
-
-  const toggleEmail = () => {
-    const v = !notifyEmail;
-    setNotifyEmail(v);
-    save(notifySms, v);
-  };
-
-  if (!loaded) return <div className="p-4 text-center text-gray-400">Loading...</div>;
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-4">
@@ -52,10 +21,10 @@ export default function Settings() {
             <div className="text-sm text-gray-500">Match invites, score updates, etc.</div>
           </div>
           <div
-            onClick={toggleEmail}
-            className={`w-12 h-7 rounded-full relative transition-colors ${notifyEmail ? 'bg-green-500' : 'bg-gray-300'}`}
+            onClick={() => toggle('notify_email')}
+            className={`w-12 h-7 rounded-full relative transition-colors ${settings.notify_email ? 'bg-green-500' : 'bg-gray-300'}`}
           >
-            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${notifyEmail ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${settings.notify_email ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </div>
         </label>
         <label className="flex items-center justify-between p-4 cursor-pointer">
@@ -64,14 +33,14 @@ export default function Settings() {
             <div className="text-sm text-gray-500">Text messages to your phone number</div>
           </div>
           <div
-            onClick={toggleSms}
-            className={`w-12 h-7 rounded-full relative transition-colors ${notifySms ? 'bg-green-500' : 'bg-gray-300'}`}
+            onClick={() => toggle('notify_sms')}
+            className={`w-12 h-7 rounded-full relative transition-colors ${settings.notify_sms ? 'bg-green-500' : 'bg-gray-300'}`}
           >
-            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${notifySms ? 'translate-x-5' : 'translate-x-0.5'}`} />
+            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow transition-transform ${settings.notify_sms ? 'translate-x-5' : 'translate-x-0.5'}`} />
           </div>
         </label>
       </div>
-      {saving && <div className="text-center text-sm text-gray-400">Saving...</div>}
+      {updateMutation.isPending && <div className="text-center text-sm text-gray-400">Saving...</div>}
     </div>
   );
 }

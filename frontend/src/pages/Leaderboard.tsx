@@ -1,32 +1,17 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/client';
-import { LeaderboardEntry } from '../types';
+import { useLeaderboard } from '../hooks/useLeaderboard';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Leaderboard() {
-  const [board, setBoard] = useState<LeaderboardEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: board, isLoading, error, refetch } = useLeaderboard();
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api.get('/leaderboard')
-      .then(r => setBoard(r.data.leaderboard))
-      .catch(() => setError('Failed to load leaderboard'))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, []);
-
-  if (loading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner text="Loading leaderboard..." /></div>;
-  if (error) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error} onRetry={load} /></div>;
+  if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner text="Loading leaderboard..." /></div>;
+  if (error) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message="Failed to load leaderboard" onRetry={refetch} /></div>;
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <h1 className="text-2xl font-bold text-green-700 mb-4">🏆 Leaderboard</h1>
-      {board.length === 0 ? <EmptyState icon="🏆" title="No rankings yet" subtitle="Play some matches to get ranked!" /> : (
+      {!board?.length ? <EmptyState icon="🏆" title="No rankings yet" subtitle="Play some matches to get ranked!" /> : (
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
