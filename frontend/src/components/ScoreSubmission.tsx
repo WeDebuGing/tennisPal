@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Match, SetScore } from '../types';
 
-type MatchFormat = 'best_of_3' | 'best_of_5' | 'pro_set';
+type MatchFormat = 'best_of_3' | 'pro_set';
 
 interface Props {
   match: Match;
@@ -12,20 +12,17 @@ const GAME_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7];
 
 const FORMAT_LABELS: Record<MatchFormat, string> = {
   best_of_3: 'Best of 3 Sets',
-  best_of_5: 'Best of 5 Sets',
   pro_set: 'Pro Set (first to 8)',
 };
 
 function maxSets(fmt: MatchFormat): number {
   if (fmt === 'pro_set') return 1;
-  if (fmt === 'best_of_3') return 3;
-  return 5;
+  return 3;
 }
 
 function setsToWin(fmt: MatchFormat): number {
   if (fmt === 'pro_set') return 1;
-  if (fmt === 'best_of_3') return 2;
-  return 3;
+  return 2;
 }
 
 function needsTiebreak(p1: number, p2: number): boolean {
