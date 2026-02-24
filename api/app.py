@@ -13,7 +13,7 @@ RELEASE_MODE = os.environ.get('TENNISPAL_RELEASE', '').lower() in ('1', 'true', 
 FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
 
 if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
-    app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path='')
+    app = Flask(__name__, static_folder=None)
 else:
     app = Flask(__name__)
 

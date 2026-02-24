@@ -14,14 +14,19 @@ export default function Invite() {
   const [form, setForm] = useState({ play_date: today, start_time: '10:00', end_time: '12:00', court: 'TBD', match_type: 'singles' });
   const set = (k: string, v: string) => setForm({ ...form, [k]: v });
 
+  const [submitted, setSubmitted] = useState(false);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitted || sendInvite.isPending) return;
+    setSubmitted(true);
     try {
       await sendInvite.mutateAsync({ ...form, to_user_id: id });
       toast('Invite sent! 🎾');
       nav(`/players/${id}`);
     } catch {
       toast('Failed to send invite', 'error');
+      setSubmitted(false);
     }
   };
 
@@ -45,8 +50,8 @@ export default function Invite() {
           <select className="w-full border rounded-lg p-3" value={form.match_type} onChange={e => set('match_type', e.target.value)}>
             <option value="singles">Singles</option><option value="doubles">Doubles</option><option value="hitting">Hitting</option>
           </select></div>
-        <button disabled={sendInvite.isPending} className="w-full bg-green-600 text-white rounded-lg p-3 font-semibold hover:bg-green-700 disabled:opacity-50">
-          {sendInvite.isPending ? 'Sending...' : 'Send Invite 🎾'}
+        <button disabled={submitted || sendInvite.isPending} className="w-full bg-green-600 text-white rounded-lg p-3 font-semibold hover:bg-green-700 disabled:opacity-50">
+          {submitted || sendInvite.isPending ? 'Sending...' : 'Send Invite 🎾'}
         </button>
       </form>
     </div>

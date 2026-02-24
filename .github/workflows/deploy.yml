@@ -16,11 +16,14 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script: |
             cd /opt/tennispal
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
+            git clean -fd
             source venv/bin/activate
-            pip install -r api/requirements.txt
+            pip install -r api/requirements.txt -q
             cd frontend
-            npm ci
+            npm ci --silent
             npm run build
             cd ..
+            python api/seed.py restore || true
             systemctl restart tennispal
