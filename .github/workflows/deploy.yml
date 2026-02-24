@@ -23,7 +23,7 @@ jobs:
             pip install -r api/requirements.txt -q
             cd frontend
             npm ci --silent
-            npm run build
+            npx vite build
             cd ..
             python api/seed.py restore || true
             systemctl restart tennispal
