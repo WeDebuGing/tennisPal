@@ -66,6 +66,8 @@ def login():
     password = data.get('password', '')
     user = User.query.filter((User.email == identifier) | (User.phone == identifier)).first()
     if user and check_password_hash(user.password_hash, password):
+        if user.is_banned:
+            return jsonify(error='Your account has been suspended.'), 403
         token = create_access_token(identity=str(user.id))
         return jsonify(token=token, user=user.to_dict())
     return jsonify(error='Invalid credentials.'), 401
@@ -780,6 +782,188 @@ def public_stats():
     players = db.session.query(User).count()
     matches = db.session.query(Match).count()
     return jsonify(players=players, matches=matches)
+
+
+# ── Admin ──
+
+ADMIN_SECRET = os.environ.get('ADMIN_SECRET', 'tennispal-admin-secret')
+
+
+def admin_required(f):
+    """Decorator: verify X-Admin-Token header matches a valid admin JWT."""
+    from functools import wraps
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = request.headers.get('X-Admin-Token')
+        if not token:
+            return jsonify(error='Admin token required.'), 401
+        try:
+            from flask_jwt_extended import decode_token
+            decoded = decode_token(token)
+            uid = int(decoded['sub'])
+            user = User.query.get(uid)
+            if not user or not user.is_admin:
+                return jsonify(error='Not an admin.'), 403
+        except Exception:
+            return jsonify(error='Invalid admin token.'), 401
+        return f(*args, **kwargs)
+    return wrapper
+
+
+@app.route('/api/admin/login', methods=['POST'])
+def admin_login():
+    data = request.get_json()
+    email = data.get('email', '').strip()
+    password = data.get('password', '')
+    user = User.query.filter_by(email=email).first()
+    if user and check_password_hash(user.password_hash, password) and user.is_admin:
+        token = create_access_token(identity=str(user.id))
+        return jsonify(token=token, user={'id': user.id, 'name': user.name, 'email': user.email})
+    return jsonify(error='Invalid credentials or not an admin.'), 401
+
+
+@app.route('/api/admin/stats')
+@admin_required
+def admin_stats():
+    total_users = User.query.count()
+    banned_users = User.query.filter_by(is_banned=True).count()
+    total_matches = Match.query.count()
+    completed_matches = Match.query.filter_by(score_confirmed=True).count()
+    scheduled_matches = Match.query.filter_by(status='scheduled').count()
+    disputed_matches = Match.query.filter_by(score_disputed=True).count()
+    active_posts = LookingToPlay.query.filter(
+        LookingToPlay.claimed_by_id.is_(None),
+        LookingToPlay.play_date >= date.today()
+    ).count()
+    pending_invites = MatchInvite.query.filter_by(status='pending').count()
+    total_notifications = Notification.query.count()
+    unread_notifications = Notification.query.filter_by(read=False).count()
+
+    # Users joined in last 7 / 30 days
+    week_ago = datetime.utcnow() - timedelta(days=7)
+    month_ago = datetime.utcnow() - timedelta(days=30)
+    new_users_week = User.query.filter(User.created_at >= week_ago).count()
+    new_users_month = User.query.filter(User.created_at >= month_ago).count()
+
+    return jsonify(
+        total_users=total_users, banned_users=banned_users,
+        total_matches=total_matches, completed_matches=completed_matches,
+        scheduled_matches=scheduled_matches, disputed_matches=disputed_matches,
+        active_posts=active_posts, pending_invites=pending_invites,
+        total_notifications=total_notifications, unread_notifications=unread_notifications,
+        new_users_week=new_users_week, new_users_month=new_users_month,
+    )
+
+
+@app.route('/api/admin/users')
+@admin_required
+def admin_users():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    search = request.args.get('search', '').strip()
+    q = User.query
+    if search:
+        q = q.filter(User.name.ilike(f'%{search}%') | User.email.ilike(f'%{search}%'))
+    total = q.count()
+    users = q.order_by(User.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify(
+        users=[{
+            'id': u.id, 'name': u.name, 'email': u.email, 'phone': u.phone,
+            'ntrp': u.ntrp, 'elo': u.elo, 'is_admin': u.is_admin, 'is_banned': u.is_banned,
+            'matches_played': u.matches_played, 'wins': u.wins, 'losses': u.losses,
+            'created_at': u.created_at.isoformat() if u.created_at else None,
+        } for u in users],
+        total=total, page=page, per_page=per_page,
+    )
+
+
+@app.route('/api/admin/users/<int:user_id>', methods=['PUT'])
+@admin_required
+def admin_update_user(user_id):
+    user = User.query.get_or_404(user_id)
+    data = request.get_json() or {}
+    for field in ('name', 'email', 'ntrp', 'elo', 'is_admin', 'is_banned'):
+        if field in data:
+            val = data[field]
+            if field == 'ntrp' and val is not None:
+                val = float(val)
+            if field == 'elo' and val is not None:
+                val = int(val)
+            setattr(user, field, val)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/admin/users/<int:user_id>/ban', methods=['POST'])
+@admin_required
+def admin_ban_user(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_banned = True
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/admin/users/<int:user_id>/unban', methods=['POST'])
+@admin_required
+def admin_unban_user(user_id):
+    user = User.query.get_or_404(user_id)
+    user.is_banned = False
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/admin/matches')
+@admin_required
+def admin_matches():
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    status = request.args.get('status', '')
+    q = Match.query
+    if status:
+        q = q.filter_by(status=status)
+    total = q.count()
+    matches = q.order_by(Match.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
+    return jsonify(matches=[m.to_dict() for m in matches], total=total, page=page, per_page=per_page)
+
+
+@app.route('/api/admin/matches/<int:match_id>', methods=['PUT'])
+@admin_required
+def admin_update_match(match_id):
+    match = Match.query.get_or_404(match_id)
+    data = request.get_json() or {}
+    for field in ('status', 'score_confirmed', 'score_disputed'):
+        if field in data:
+            setattr(match, field, data[field])
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/admin/matches/<int:match_id>', methods=['DELETE'])
+@admin_required
+def admin_delete_match(match_id):
+    match = Match.query.get_or_404(match_id)
+    db.session.delete(match)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route('/api/admin/notifications', methods=['POST'])
+@admin_required
+def admin_send_notification():
+    data = request.get_json() or {}
+    message = data.get('message', '').strip()
+    user_ids = data.get('user_ids', [])  # empty = broadcast to all
+    if not message:
+        return jsonify(error='Message required.'), 400
+    if user_ids:
+        targets = User.query.filter(User.id.in_(user_ids)).all()
+    else:
+        targets = User.query.filter_by(is_banned=False).all()
+    for u in targets:
+        n = Notification(user_id=u.id, message=message)
+        db.session.add(n)
+    db.session.commit()
+    return jsonify(ok=True, sent_to=len(targets))
 
 
 # ── Static / SPA catch-all (release mode only) ──
