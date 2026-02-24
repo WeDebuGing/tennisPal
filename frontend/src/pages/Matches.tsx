@@ -1,12 +1,21 @@
 import { Link } from 'react-router-dom';
 import { useMatches, useRespondInvite } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Matches() {
   const { user } = useAuth();
   const { data, isLoading, error, refetch } = useMatches();
   const respondMutation = useRespondInvite();
+  const { toast } = useToast();
+
+  const handleRespond = (id: number, action: 'accept' | 'decline') => {
+    respondMutation.mutate({ id, action }, {
+      onSuccess: () => toast(action === 'accept' ? 'Invite accepted! Match on 🎾' : 'Invite declined'),
+      onError: () => toast('Failed to respond to invite', 'error'),
+    });
+  };
 
   if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner text="Loading matches..." /></div>;
   if (error) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message="Failed to load matches" onRetry={refetch} /></div>;
@@ -25,8 +34,14 @@ export default function Matches() {
               <p className="text-sm font-semibold">{inv.from_user.name} invited you</p>
               <p className="text-xs text-gray-500 mt-1">{inv.play_date} · {inv.start_time}–{inv.end_time} · {inv.court}</p>
               <div className="flex gap-2 mt-3">
-                <button onClick={() => respondMutation.mutate({ id: inv.id, action: 'accept' })} className="flex-1 bg-green-600 text-white text-sm py-2 rounded-lg active:bg-green-800 transition-colors">Accept</button>
-                <button onClick={() => respondMutation.mutate({ id: inv.id, action: 'decline' })} className="flex-1 bg-red-500 text-white text-sm py-2 rounded-lg active:bg-red-700 transition-colors">Decline</button>
+                <button onClick={() => handleRespond(inv.id, 'accept')} disabled={respondMutation.isPending}
+                  className="flex-1 bg-green-600 text-white text-sm py-2 rounded-lg active:bg-green-800 disabled:opacity-50 transition-colors">
+                  {respondMutation.isPending ? 'Processing...' : 'Accept'}
+                </button>
+                <button onClick={() => handleRespond(inv.id, 'decline')} disabled={respondMutation.isPending}
+                  className="flex-1 bg-red-500 text-white text-sm py-2 rounded-lg active:bg-red-700 disabled:opacity-50 transition-colors">
+                  Decline
+                </button>
               </div>
             </div>
           ))}

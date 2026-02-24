@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CityProvider } from './context/CityContext';
+import { ToastProvider } from './components/Toast';
 import CitySelector from './components/CitySelector';
 import NavBar from './components/NavBar';
 import Spinner from './components/Spinner';
@@ -75,9 +76,11 @@ export default function App() {
     <BrowserRouter>
       <AuthProvider>
         <CityProvider>
-          <div className="min-h-screen bg-gray-50">
-            <AppRoutes />
-          </div>
+          <ToastProvider>
+            <div className="min-h-screen bg-gray-50">
+              <AppRoutes />
+            </div>
+          </ToastProvider>
         </CityProvider>
       </AuthProvider>
     </BrowserRouter>

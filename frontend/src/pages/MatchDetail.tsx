@@ -1,6 +1,7 @@
 import { useParams } from 'react-router-dom';
 import { useMatch, useSubmitScore, useConfirmScore, useCancelMatch } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/Toast';
 import ScoreSubmission from '../components/ScoreSubmission';
 import { Spinner, ErrorBox } from '../components/ui';
 import { SetScore } from '../types';
@@ -8,6 +9,7 @@ import { SetScore } from '../types';
 export default function MatchDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { toast } = useToast();
   const { data: match, isLoading, error, refetch } = useMatch(id);
   const submitScore = useSubmitScore(id);
   const confirmScore = useConfirmScore(id);
@@ -67,14 +69,23 @@ export default function MatchDetail() {
         <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-gray-700">Confirm Score?</h2>
           <div className="flex gap-2">
-            <button onClick={() => confirmScore.mutate('confirm')} className="flex-1 bg-green-600 text-white rounded-lg p-3 font-semibold active:bg-green-800 transition-colors">Confirm ✅</button>
-            <button onClick={() => confirmScore.mutate('dispute')} className="flex-1 bg-red-500 text-white rounded-lg p-3 font-semibold active:bg-red-700 transition-colors">Dispute ❌</button>
+            <button onClick={() => confirmScore.mutate('confirm', { onSuccess: () => toast('Score confirmed ✅'), onError: () => toast('Failed to confirm', 'error') })}
+              disabled={confirmScore.isPending} className="flex-1 bg-green-600 text-white rounded-lg p-3 font-semibold active:bg-green-800 disabled:opacity-50 transition-colors">
+              {confirmScore.isPending ? 'Processing...' : 'Confirm ✅'}
+            </button>
+            <button onClick={() => confirmScore.mutate('dispute', { onSuccess: () => toast('Score disputed'), onError: () => toast('Failed to dispute', 'error') })}
+              disabled={confirmScore.isPending} className="flex-1 bg-red-500 text-white rounded-lg p-3 font-semibold active:bg-red-700 disabled:opacity-50 transition-colors">
+              Dispute ❌
+            </button>
           </div>
         </div>
       )}
 
       {match.status === 'scheduled' && user && (
-        <button onClick={() => cancelMatch.mutate()} className="w-full bg-red-100 text-red-600 rounded-xl p-3 font-semibold active:bg-red-200 transition-colors">Cancel Match</button>
+        <button onClick={() => cancelMatch.mutate(undefined, { onSuccess: () => toast('Match cancelled'), onError: () => toast('Failed to cancel', 'error') })}
+          disabled={cancelMatch.isPending} className="w-full bg-red-100 text-red-600 rounded-xl p-3 font-semibold active:bg-red-200 disabled:opacity-50 transition-colors">
+          {cancelMatch.isPending ? 'Cancelling...' : 'Cancel Match'}
+        </button>
       )}
     </div>
   );

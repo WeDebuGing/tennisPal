@@ -28,7 +28,22 @@ export function useRespondInvite() {
   return useMutation({
     mutationFn: ({ id, action }: { id: number; action: 'accept' | 'decline' }) =>
       api.post(`/invites/${id}/${action}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['matches'] }),
+    onMutate: async ({ id }) => {
+      await qc.cancelQueries({ queryKey: ['matches'] });
+      const previous = qc.getQueryData<MatchesData>(['matches']);
+      qc.setQueryData<MatchesData>(['matches'], (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pending_invites: old.pending_invites.filter(inv => inv.id !== id),
+        };
+      });
+      return { previous };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) qc.setQueryData(['matches'], context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['matches'] }),
   });
 }
 

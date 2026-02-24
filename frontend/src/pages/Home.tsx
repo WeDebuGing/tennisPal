@@ -1,12 +1,21 @@
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { usePosts, useClaimPost } from '../hooks/usePosts';
+import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Home() {
   const { user } = useAuth();
   const { data: posts, isLoading, error, refetch } = usePosts();
   const claimMutation = useClaimPost();
+  const { toast } = useToast();
+
+  const handleClaim = (id: number) => {
+    claimMutation.mutate(id, {
+      onSuccess: () => toast('You\'re in! Match created 🎾'),
+      onError: () => toast('Failed to claim post', 'error'),
+    });
+  };
 
   const fmt = (d: string) => new Date(d + 'T00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const fmtTime = (t: string) => { const [h, m] = t.split(':').map(Number); const ap = h >= 12 ? 'pm' : 'am'; return `${h % 12 || 12}:${m.toString().padStart(2, '0')}${ap}`; };
@@ -34,7 +43,13 @@ export default function Home() {
               {p.court && <p className="text-sm text-gray-500">📍 {p.court}</p>}
               {(p.level_min || p.level_max) && <p className="text-xs text-gray-400 mt-1">Level: {p.level_min}–{p.level_max}</p>}
               {user && user.id !== p.user_id && (
-                <button onClick={() => claimMutation.mutate(p.id)} className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 active:bg-green-800 transition-colors w-full sm:w-auto">I'm In! 🎾</button>
+                <button
+                  onClick={() => handleClaim(p.id)}
+                  disabled={claimMutation.isPending}
+                  className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors w-full sm:w-auto"
+                >
+                  {claimMutation.isPending ? 'Joining...' : "I'm In! 🎾"}
+                </button>
               )}
             </div>
           ))}

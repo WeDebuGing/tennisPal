@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAvailability, useAddAvailability, useRemoveAvailability } from '../hooks/useAvailability';
+import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -9,10 +10,21 @@ export default function AvailabilityPage() {
   const { data: slots, isLoading, error, refetch } = useAvailability();
   const addMutation = useAddAvailability();
   const removeMutation = useRemoveAvailability();
+  const { toast } = useToast();
 
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
-    addMutation.mutate(form);
+    addMutation.mutate(form, {
+      onSuccess: () => toast('Availability added'),
+      onError: () => toast('Failed to add slot', 'error'),
+    });
+  };
+
+  const remove = (id: number) => {
+    removeMutation.mutate(id, {
+      onSuccess: () => toast('Slot removed'),
+      onError: () => toast('Failed to remove slot', 'error'),
+    });
   };
 
   return (
@@ -38,7 +50,7 @@ export default function AvailabilityPage() {
           {slots.map(s => (
             <div key={s.id} className="flex items-center justify-between bg-white rounded-xl shadow-sm p-4">
               <span className="text-sm text-gray-700">{DAYS[s.day_of_week]} {s.start_time}–{s.end_time}</span>
-              <button onClick={() => removeMutation.mutate(s.id)} className="text-red-500 text-sm hover:underline active:text-red-700">Remove</button>
+              <button onClick={() => remove(s.id)} className="text-red-500 text-sm hover:underline active:text-red-700">Remove</button>
             </div>
           ))}
         </div>

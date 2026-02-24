@@ -13,6 +13,15 @@ export function useClaimPost() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.post(`/posts/${id}/claim`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['posts'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['posts'] });
+      const previous = qc.getQueryData<Post[]>(['posts']);
+      qc.setQueryData<Post[]>(['posts'], (old) => old?.filter(p => p.id !== id) ?? []);
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) qc.setQueryData(['posts'], context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['posts'] }),
   });
 }

@@ -14,7 +14,7 @@ export function useAddAvailability() {
   return useMutation({
     mutationFn: (form: { day_of_week: string; start_time: string; end_time: string }) =>
       api.post('/availability', form),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['availability'] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['availability'] }),
   });
 }
 
@@ -22,6 +22,15 @@ export function useRemoveAvailability() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.delete(`/availability/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['availability'] }),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['availability'] });
+      const previous = qc.getQueryData<Availability[]>(['availability']);
+      qc.setQueryData<Availability[]>(['availability'], (old) => old?.filter(s => s.id !== id) ?? []);
+      return { previous };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) qc.setQueryData(['availability'], context.previous);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['availability'] }),
   });
 }
