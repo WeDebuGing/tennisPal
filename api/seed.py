@@ -1,6 +1,6 @@
 """Seed the database with test users, matches, availability, and posts."""
 from app import app, db
-from models import User, Availability, LookingToPlay, Match, MatchInvite, Notification
+from models import User, Availability, LookingToPlay, Match, MatchInvite, Notification, Court
 from werkzeug.security import generate_password_hash
 from datetime import date, datetime, timedelta
 import json, random
@@ -50,7 +50,25 @@ MATCHES = [
     (7, 9, 15, "best_of_3", [{"p1": 6, "p2": 4}, {"p1": 4, "p2": 6}, {"p1": 7, "p2": 6, "tiebreak": {"p1": 7, "p2": 4}}], 7),
 ]
 
-COURTS = ["Schenley Park Courts", "Mellon Park Tennis", "Highland Park Courts", "CMU Tennis Courts", "Frick Park Courts"]
+COURT_NAMES = ["Schenley Park Courts", "Mellon Park Tennis", "Highland Park Courts", "CMU Tennis Courts", "Frick Park Courts"]
+
+PITTSBURGH_COURTS = [
+    {"name": "Arsenal Park", "address": "290 39th St, Pittsburgh PA 15201", "lat": 40.465322, "lng": -79.961233, "num_courts": 4, "lighted": True, "public": True},
+    {"name": "Allegheny Commons West Park", "address": "Ridge Ave & W Ohio St, Pittsburgh PA 15212", "lat": 40.451527, "lng": -80.011057, "num_courts": 3, "lighted": True, "public": True},
+    {"name": "Allegheny Commons North Park", "address": "8 N Commons, Pittsburgh PA 15212", "lat": 40.453530, "lng": -80.006802, "num_courts": 2, "lighted": True, "public": True},
+    {"name": "Carnegie Mellon University", "address": "5000 Forbes Ave, Pittsburgh PA 15213", "lat": 40.444167, "lng": -79.943361, "num_courts": 6, "lighted": True, "public": False},
+    {"name": "Schenley Park", "address": "Overlook Dr, Pittsburgh PA 15213", "lat": 40.435000, "lng": -79.942000, "num_courts": 8, "lighted": True, "public": True},
+    {"name": "Mellon Park", "address": "1 Overlook Dr, Pittsburgh PA 15217", "lat": 40.452700, "lng": -79.919500, "num_courts": 6, "lighted": True, "public": True},
+    {"name": "Highland Park", "address": "Highland Ave, Pittsburgh PA 15206", "lat": 40.473592, "lng": -79.911404, "num_courts": 4, "lighted": False, "public": True},
+    {"name": "Frick Park", "address": "2005 Beechwood Blvd, Pittsburgh PA 15217", "lat": 40.432800, "lng": -79.907500, "num_courts": 4, "lighted": False, "public": True},
+    {"name": "Washington's Landing", "address": "200 Waterfront Dr, Pittsburgh PA 15222", "lat": 40.458900, "lng": -79.987800, "num_courts": 4, "lighted": True, "public": True},
+    {"name": "Allderdice HS", "address": "Monmouth St, Pittsburgh PA 15217", "lat": 40.428527, "lng": -79.917264, "num_courts": 3, "lighted": False, "public": True},
+    {"name": "Brashear HS", "address": "590 Crane Ave, Pittsburgh PA 15226", "lat": 40.416932, "lng": -80.019042, "num_courts": 3, "lighted": False, "public": True},
+    {"name": "Davis Park", "address": "5680 Hobart St, Pittsburgh PA 15217", "lat": 40.450509, "lng": -79.936305, "num_courts": 1, "lighted": False, "public": True},
+    {"name": "Moore Park", "address": "801 Pioneer Ave, Pittsburgh PA 15226", "lat": 40.412000, "lng": -80.022000, "num_courts": 2, "lighted": True, "public": True},
+    {"name": "South Park", "address": "4651 Clairton Blvd, Whitehall PA 15236", "lat": 40.327000, "lng": -79.985000, "num_courts": 4, "lighted": True, "public": True},
+    {"name": "North Park", "address": "1 Paul Schweiger Way, Allison Park PA 15101", "lat": 40.578000, "lng": -79.981000, "num_courts": 6, "lighted": True, "public": True},
+]
 
 def score_string(sets_data):
     parts = []
@@ -127,8 +145,12 @@ def seed():
         db.session.add(Notification(user_id=users[0].id, message="Your match vs Emily Davis is in 2 days!", read=True))
         db.session.add(Notification(user_id=users[0].id, message="Score confirmed: You beat Emily Davis 6-4, 6-3 🎉", read=True))
 
+        # Courts
+        for c in PITTSBURGH_COURTS:
+            db.session.add(Court(**c))
+
         db.session.commit()
-        print(f"✅ Seeded: {len(users)} users, {len(MATCHES)} completed matches, 1 scheduled match, 4 posts, 1 invite, 3 notifications")
+        print(f"✅ Seeded: {len(users)} users, {len(MATCHES)} completed matches, 1 scheduled match, 4 posts, 1 invite, 3 notifications, {len(PITTSBURGH_COURTS)} courts")
         print(f"\nTest accounts (all password: tennis123):")
         for u in users:
             print(f"  {u.email:<30} {u.name:<20} NTRP {u.ntrp}  ELO {u.elo}")

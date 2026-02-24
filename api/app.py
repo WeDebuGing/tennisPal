@@ -2,11 +2,12 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification
+from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court
 from notifications import notify_user
 from datetime import datetime, date, timedelta
 import os
 import json
+import math
 
 # In release mode, serve the built frontend from frontend/dist
 RELEASE_MODE = os.environ.get('TENNISPAL_RELEASE', '').lower() in ('1', 'true', 'yes')
@@ -667,6 +668,61 @@ def matchmaking_suggestions():
 
     suggestions.sort(key=lambda s: s['match_score'], reverse=True)
     return jsonify(suggestions=suggestions)
+
+
+# ── Courts ──
+
+def haversine(lat1, lng1, lat2, lng2):
+    R = 6371  # km
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlng / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+@app.route('/api/courts')
+def get_courts():
+    lat = request.args.get('lat', type=float)
+    lng = request.args.get('lng', type=float)
+    radius = request.args.get('radius', type=float)
+    courts = Court.query.all()
+    results = []
+    for c in courts:
+        d = c.to_dict()
+        if lat is not None and lng is not None:
+            d['distance_km'] = round(haversine(lat, lng, c.lat, c.lng), 2)
+        results.append(d)
+    if lat is not None and lng is not None:
+        if radius is not None:
+            results = [r for r in results if r['distance_km'] <= radius]
+        results.sort(key=lambda r: r['distance_km'])
+    else:
+        results.sort(key=lambda r: r['name'])
+    return jsonify(courts=results)
+
+
+@app.route('/api/courts/<int:court_id>')
+def get_court(court_id):
+    court = Court.query.get_or_404(court_id)
+    return jsonify(court=court.to_dict())
+
+
+@app.route('/api/courts/nearby')
+def get_courts_nearby():
+    lat = request.args.get('lat', type=float)
+    lng = request.args.get('lng', type=float)
+    radius = request.args.get('radius', 5, type=float)
+    if lat is None or lng is None:
+        return jsonify(error='lat and lng required'), 400
+    courts = Court.query.all()
+    results = []
+    for c in courts:
+        d = c.to_dict()
+        d['distance_km'] = round(haversine(lat, lng, c.lat, c.lng), 2)
+        if d['distance_km'] <= radius:
+            results.append(d)
+    results.sort(key=lambda r: r['distance_km'])
+    return jsonify(courts=results)
 
 
 # ── Settings ──

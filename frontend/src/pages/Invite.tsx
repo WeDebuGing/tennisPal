@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { usePlayer } from '../hooks/usePlayers';
 import { useSendInvite } from '../hooks/useMatches';
 import { useToast } from '../components/Toast';
+import { useCourts } from '../hooks/useCourts';
 
 export default function Invite() {
   const { id } = useParams();
@@ -10,8 +11,10 @@ export default function Invite() {
   const { data: player } = usePlayer(id);
   const sendInvite = useSendInvite();
   const { toast } = useToast();
+  const { data: courts } = useCourts();
   const today = new Date().toISOString().split('T')[0];
-  const [form, setForm] = useState({ play_date: today, start_time: '10:00', end_time: '12:00', court: 'TBD', match_type: 'singles' });
+  const [form, setForm] = useState({ play_date: today, start_time: '10:00', end_time: '12:00', court: '', match_type: 'singles' });
+  const [customCourt, setCustomCourt] = useState('');
   const set = (k: string, v: string) => setForm({ ...form, [k]: v });
 
   const [submitted, setSubmitted] = useState(false);
@@ -21,7 +24,8 @@ export default function Invite() {
     if (submitted || sendInvite.isPending) return;
     setSubmitted(true);
     try {
-      await sendInvite.mutateAsync({ ...form, to_user_id: id });
+      const court = form.court === '__other__' ? customCourt : (form.court || 'TBD');
+      await sendInvite.mutateAsync({ ...form, court, to_user_id: id });
       toast('Invite sent! 🎾');
       nav(`/players/${id}`);
     } catch {
@@ -45,7 +49,15 @@ export default function Invite() {
             <input type="time" className="w-full border rounded-lg p-3" value={form.end_time} onChange={e => set('end_time', e.target.value)} required /></div>
         </div>
         <div><label className="block text-sm font-medium text-gray-700 mb-1">Court</label>
-          <input className="w-full border rounded-lg p-3" value={form.court} onChange={e => set('court', e.target.value)} /></div>
+          <select className="w-full border rounded-lg p-3" value={form.court} onChange={e => set('court', e.target.value)}>
+            <option value="">TBD</option>
+            {(courts ?? []).map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+            <option value="__other__">Other…</option>
+          </select>
+          {form.court === '__other__' && (
+            <input className="w-full border rounded-lg p-3 mt-2" placeholder="Enter court name" value={customCourt} onChange={e => setCustomCourt(e.target.value)} />
+          )}
+        </div>
         <div><label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
           <select className="w-full border rounded-lg p-3" value={form.match_type} onChange={e => set('match_type', e.target.value)}>
             <option value="singles">Singles</option><option value="doubles">Doubles</option><option value="hitting">Hitting</option>

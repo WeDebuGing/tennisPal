@@ -189,6 +189,21 @@ class Match(db.Model):
         }
 
 
+class Court(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), nullable=False)
+    address = db.Column(db.String(300))
+    lat = db.Column(db.Float, nullable=False)
+    lng = db.Column(db.Float, nullable=False)
+    num_courts = db.Column(db.Integer, default=1)
+    lighted = db.Column(db.Boolean, default=False)
+    surface = db.Column(db.String(50), default='hard')
+    public = db.Column(db.Boolean, default=True)
+
+    def to_dict(self):
+        return {k: getattr(self, k) for k in ['id', 'name', 'address', 'lat', 'lng', 'num_courts', 'lighted', 'surface', 'public']}
+
+
 class Notification(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)

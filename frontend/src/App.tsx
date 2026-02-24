@@ -18,6 +18,7 @@ import Leaderboard from './pages/Leaderboard';
 import AvailabilityPage from './pages/AvailabilityPage';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
+import Courts from './pages/Courts';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
@@ -56,6 +57,7 @@ function AppRoutes() {
           <Route path="/matches" element={<Matches />} />
           <Route path="/matches/:id" element={<MatchDetail />} />
           <Route path="/invite/:id" element={<Invite />} />
+          <Route path="/courts" element={<Courts />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/availability" element={<AvailabilityPage />} />
           <Route path="/notifications" element={<Notifications />} />

@@ -4,6 +4,7 @@ const tabs = [
   { to: '/', icon: '🏠', label: 'Home' },
   { to: '/players', icon: '👥', label: 'Players' },
   { to: '/matchmaking', icon: '🎯', label: 'Match' },
+  { to: '/courts', icon: '📍', label: 'Courts' },
   { to: '/matches', icon: '🎾', label: 'Matches' },
   { to: '/profile', icon: '👤', label: 'Profile' },
 ];
