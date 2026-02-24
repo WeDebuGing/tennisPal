@@ -1,30 +1,8 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/client';
-
-interface Suggestion {
-  id: number;
-  name: string;
-  ntrp: number | null;
-  elo: number;
-  match_score: number;
-  reasons: string[];
-  elo_diff: number;
-  recent_matches: number;
-  availability_overlap: number | null;
-  reliability: number;
-}
+import { useMatchmaking } from '../hooks/useMatchmaking';
 
 export default function Matchmaking() {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    api.get('/matchmaking/suggestions').then(r => {
-      setSuggestions(r.data.suggestions);
-      setLoading(false);
-    });
-  }, []);
+  const { data: suggestions, isLoading } = useMatchmaking();
 
   const eloBadgeColor = (diff: number) => {
     if (diff <= 50) return 'bg-green-100 text-green-700';
@@ -32,14 +10,14 @@ export default function Matchmaking() {
     return 'bg-red-100 text-red-700';
   };
 
-  if (loading) return <div className="p-4 text-center text-green-600">Finding your best matches...</div>;
+  if (isLoading) return <div className="p-4 text-center text-green-600">Finding your best matches...</div>;
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <h1 className="text-2xl font-bold text-green-700 mb-1">🎯 Find a Match</h1>
       <p className="text-sm text-gray-500 mb-4">Players ranked by skill compatibility, availability overlap, and variety</p>
 
-      {suggestions.length === 0 ? (
+      {!suggestions?.length ? (
         <div className="text-center py-8 text-gray-400">
           <p className="text-4xl mb-2">🎾</p>
           <p>No suggestions yet. Add your availability to get better matches!</p>

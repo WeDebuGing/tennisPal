@@ -1,36 +1,17 @@
-import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import api from '../api/client';
-import { Match, MatchInvite } from '../types';
+import { useMatches, useRespondInvite } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 export default function Matches() {
   const { user } = useAuth();
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [pending, setPending] = useState<MatchInvite[]>([]);
-  const [sent, setSent] = useState<MatchInvite[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data, isLoading, error, refetch } = useMatches();
+  const respondMutation = useRespondInvite();
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api.get('/matches')
-      .then(r => { setMatches(r.data.matches); setPending(r.data.pending_invites); setSent(r.data.sent_invites); })
-      .catch(() => setError('Failed to load matches'))
-      .finally(() => setLoading(false));
-  };
+  if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner text="Loading matches..." /></div>;
+  if (error) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message="Failed to load matches" onRetry={refetch} /></div>;
 
-  useEffect(() => { load(); }, []);
-
-  const respond = async (id: number, action: 'accept' | 'decline') => {
-    await api.post(`/invites/${id}/${action}`);
-    load();
-  };
-
-  if (loading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner text="Loading matches..." /></div>;
-  if (error) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error} onRetry={load} /></div>;
+  const { matches = [], pending_invites: pending = [], sent_invites: sent = [] } = data || {};
 
   return (
     <div className="p-4 pb-24 max-w-lg mx-auto space-y-5">
@@ -44,8 +25,8 @@ export default function Matches() {
               <p className="text-sm font-semibold">{inv.from_user.name} invited you</p>
               <p className="text-xs text-gray-500 mt-1">{inv.play_date} · {inv.start_time}–{inv.end_time} · {inv.court}</p>
               <div className="flex gap-2 mt-3">
-                <button onClick={() => respond(inv.id, 'accept')} className="flex-1 bg-green-600 text-white text-sm py-2 rounded-lg active:bg-green-800 transition-colors">Accept</button>
-                <button onClick={() => respond(inv.id, 'decline')} className="flex-1 bg-red-500 text-white text-sm py-2 rounded-lg active:bg-red-700 transition-colors">Decline</button>
+                <button onClick={() => respondMutation.mutate({ id: inv.id, action: 'accept' })} className="flex-1 bg-green-600 text-white text-sm py-2 rounded-lg active:bg-green-800 transition-colors">Accept</button>
+                <button onClick={() => respondMutation.mutate({ id: inv.id, action: 'decline' })} className="flex-1 bg-red-500 text-white text-sm py-2 rounded-lg active:bg-red-700 transition-colors">Decline</button>
               </div>
             </div>
           ))}

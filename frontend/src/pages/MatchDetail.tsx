@@ -1,48 +1,26 @@
-import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import api from '../api/client';
-import { Match, SetScore } from '../types';
+import { useMatch, useSubmitScore, useConfirmScore, useCancelMatch } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import ScoreSubmission from '../components/ScoreSubmission';
 import { Spinner, ErrorBox } from '../components/ui';
+import { SetScore } from '../types';
 
 export default function MatchDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const [match, setMatch] = useState<Match | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: match, isLoading, error, refetch } = useMatch(id);
+  const submitScore = useSubmitScore(id);
+  const confirmScore = useConfirmScore(id);
+  const cancelMatch = useCancelMatch(id);
 
-  const load = () => {
-    setLoading(true);
-    setError('');
-    api.get(`/matches/${id}`)
-      .then(r => setMatch(r.data.match))
-      .catch(() => setError('Failed to load match'))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => { load(); }, [id]);
-
-  if (loading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
-  if (error || !match) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error || 'Match not found'} onRetry={load} /></div>;
+  if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
+  if (error || !match) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error ? 'Failed to load match' : 'Match not found'} onRetry={refetch} /></div>;
 
   const canSubmitScore = match.status === 'scheduled' && user && (user.id === match.player1.id || user.id === match.player2.id);
   const canConfirm = match.status === 'completed' && !match.score_confirmed && !match.score_disputed && user && match.score_submitted_by !== user.id;
 
   const handleStructuredSubmit = async (sets: SetScore[], matchFormat: string) => {
-    const { data } = await api.post(`/matches/${id}/score`, { sets, match_format: matchFormat });
-    setMatch(data.match);
-  };
-
-  const confirm = async (action: string) => {
-    const { data } = await api.post(`/matches/${id}/confirm`, { action });
-    setMatch(data.match);
-  };
-
-  const cancel = async () => {
-    const { data } = await api.post(`/matches/${id}/cancel`);
-    setMatch(data.match);
+    await submitScore.mutateAsync({ sets, match_format: matchFormat });
   };
 
   return (
@@ -89,14 +67,14 @@ export default function MatchDetail() {
         <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-gray-700">Confirm Score?</h2>
           <div className="flex gap-2">
-            <button onClick={() => confirm('confirm')} className="flex-1 bg-green-600 text-white rounded-lg p-3 font-semibold active:bg-green-800 transition-colors">Confirm ✅</button>
-            <button onClick={() => confirm('dispute')} className="flex-1 bg-red-500 text-white rounded-lg p-3 font-semibold active:bg-red-700 transition-colors">Dispute ❌</button>
+            <button onClick={() => confirmScore.mutate('confirm')} className="flex-1 bg-green-600 text-white rounded-lg p-3 font-semibold active:bg-green-800 transition-colors">Confirm ✅</button>
+            <button onClick={() => confirmScore.mutate('dispute')} className="flex-1 bg-red-500 text-white rounded-lg p-3 font-semibold active:bg-red-700 transition-colors">Dispute ❌</button>
           </div>
         </div>
       )}
 
       {match.status === 'scheduled' && user && (
-        <button onClick={cancel} className="w-full bg-red-100 text-red-600 rounded-xl p-3 font-semibold active:bg-red-200 transition-colors">Cancel Match</button>
+        <button onClick={() => cancelMatch.mutate()} className="w-full bg-red-100 text-red-600 rounded-xl p-3 font-semibold active:bg-red-200 transition-colors">Cancel Match</button>
       )}
     </div>
   );
