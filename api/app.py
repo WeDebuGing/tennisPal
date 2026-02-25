@@ -774,4 +774,4 @@ with app.app_context():
 
 if __name__ == '__main__':
     debug = not RELEASE_MODE
-    app.run(debug=debug, port=5001)
+    app.run(debug=debug, port=int(os.environ.get("PORT", 5001)))
