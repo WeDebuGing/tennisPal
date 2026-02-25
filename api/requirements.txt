@@ -5,3 +5,4 @@ Flask-CORS==4.0.0
 flask-jwt-extended==4.6.0
 Werkzeug==3.0.1
 Faker==22.0.0
+pytest==8.3.4

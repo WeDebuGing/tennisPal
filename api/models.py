@@ -13,6 +13,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     ntrp = db.Column(db.Float, nullable=True)
     elo = db.Column(db.Integer, default=1200)
+    city = db.Column(db.String(100), default="Pittsburgh")
     notify_sms = db.Column(db.Boolean, default=False)
     notify_email = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
