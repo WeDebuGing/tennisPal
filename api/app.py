@@ -753,6 +753,15 @@ def update_settings():
     })
 
 
+# ── Public stats (no auth) ──
+
+@app.route('/api/stats/public')
+def public_stats():
+    players = db.session.query(User).count()
+    matches = db.session.query(Match).count()
+    return jsonify(players=players, matches=matches)
+
+
 # ── Static / SPA catch-all (release mode only) ──
 
 if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
