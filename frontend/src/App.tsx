@@ -22,6 +22,7 @@ import Courts from './pages/Courts';
 import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
+import Matchmaking from './pages/Matchmaking';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -57,6 +58,7 @@ function AppRoutes() {
           <Route path="/matches" element={<Matches />} />
           <Route path="/matches/:id" element={<MatchDetail />} />
           <Route path="/invite/:id" element={<Invite />} />
+          <Route path="/matchmaking" element={<Matchmaking />} />
           <Route path="/courts" element={<Courts />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/availability" element={<AvailabilityPage />} />

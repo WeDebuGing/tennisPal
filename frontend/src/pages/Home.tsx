@@ -24,7 +24,7 @@ export default function Home() {
     <div className="p-4 pb-24 max-w-lg mx-auto">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold text-green-700">🎾 Looking to Play</h1>
-        <Link to="/notifications" className="text-2xl hover:scale-110 transition-transform">🔔</Link>
+        <Link to="/post" className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-full hover:bg-green-700 shadow-md transition-colors">+ Post</Link>
       </div>
       {isLoading ? <Spinner text="Loading posts..." /> :
        error ? <ErrorBox message="Failed to load posts" onRetry={refetch} /> :
