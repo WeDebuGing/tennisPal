@@ -23,6 +23,7 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
 import Matchmaking from './pages/Matchmaking';
+import Landing from './pages/Landing';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -35,10 +36,11 @@ function AppRoutes() {
   if (!user) {
     return (
       <Routes>
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/admin/login" element={<AdminLogin />} />
-        <Route path="*" element={<Navigate to="/login" />} />
+        <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     );
   }
