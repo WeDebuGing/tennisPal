@@ -337,6 +337,26 @@ def get_matches():
                    sent_invites=[i.to_dict() for i in sent])
 
 
+@app.route('/api/matches/upcoming')
+@jwt_required()
+def get_upcoming_matches():
+    uid = int(get_jwt_identity())
+    today = date.today()
+    matches = Match.query.filter(
+        (Match.player1_id == uid) | (Match.player2_id == uid),
+        Match.play_date >= today,
+        Match.status == 'scheduled',
+    ).order_by(Match.play_date.asc()).all()
+    result = []
+    for m in matches:
+        opponent = m.player2 if m.player1_id == uid else m.player1
+        result.append({
+            **m.to_dict(),
+            'opponent': {'id': opponent.id, 'name': opponent.name, 'ntrp': opponent.ntrp} if opponent else None,
+        })
+    return jsonify(matches=result)
+
+
 @app.route('/api/matches/<int:match_id>')
 @jwt_required()
 def get_match(match_id):
