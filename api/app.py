@@ -358,6 +358,15 @@ def get_upcoming_matches():
         })
     return jsonify(matches=result)
 
+@app.route('/api/matches/recent')
+@jwt_required()
+def get_recent_results():
+    limit = request.args.get('limit', 30, type=int)
+    results = Match.query.filter(Match.score_confirmed == True)\
+        .order_by(Match.play_date.desc(), Match.id.desc())\
+        .limit(limit).all()
+    return jsonify(results=[m.to_dict() for m in results])
+
 
 @app.route('/api/matches/<int:match_id>')
 @jwt_required()

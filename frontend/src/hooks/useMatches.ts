@@ -26,6 +26,13 @@ export function useUpcomingMatches() {
   });
 }
 
+export function useRecentResults(limit = 30) {
+  return useQuery<Match[]>({
+    queryKey: ['recentResults', limit],
+    queryFn: () => api.get(`/matches/recent?limit=${limit}`).then(r => r.data.results),
+  });
+}
+
 export function useMatch(id: string | undefined) {
   return useQuery<Match>({
     queryKey: ['match', id],
