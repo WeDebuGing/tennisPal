@@ -15,6 +15,17 @@ export function useMatches() {
   });
 }
 
+export interface UpcomingMatch extends Match {
+  opponent: { id: number; name: string; ntrp: number | null } | null;
+}
+
+export function useUpcomingMatches() {
+  return useQuery<UpcomingMatch[]>({
+    queryKey: ['matches', 'upcoming'],
+    queryFn: () => api.get('/matches/upcoming').then(r => r.data.matches),
+  });
+}
+
 export function useMatch(id: string | undefined) {
   return useQuery<Match>({
     queryKey: ['match', id],
