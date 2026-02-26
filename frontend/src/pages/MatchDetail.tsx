@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useMatch, useSubmitScore, useConfirmScore, useCancelMatch } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
 import ScoreSubmission from '../components/ScoreSubmission';
+import ReviewModal from '../components/ReviewModal';
 import { Spinner, ErrorBox } from '../components/ui';
 import { SetScore } from '../types';
+import { useReviewStatus } from '../hooks/useReviews';
 
 export default function MatchDetail() {
   const { id } = useParams();
@@ -14,6 +17,8 @@ export default function MatchDetail() {
   const submitScore = useSubmitScore(id);
   const confirmScore = useConfirmScore(id);
   const cancelMatch = useCancelMatch(id);
+  const { data: reviewData } = useReviewStatus(id);
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
   if (error || !match) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error ? 'Failed to load match' : 'Match not found'} onRetry={refetch} /></div>;
@@ -69,7 +74,7 @@ export default function MatchDetail() {
         <div className="bg-white rounded-xl shadow-sm p-5 space-y-3">
           <h2 className="font-semibold text-gray-700">Confirm Score?</h2>
           <div className="flex gap-2">
-            <button onClick={() => confirmScore.mutate('confirm', { onSuccess: () => toast('Score confirmed ✅'), onError: () => toast('Failed to confirm', 'error') })}
+            <button onClick={() => confirmScore.mutate('confirm', { onSuccess: () => { toast('Score confirmed ✅'); setShowReviewModal(true); }, onError: () => toast('Failed to confirm', 'error') })}
               disabled={confirmScore.isPending} className="flex-1 bg-green-600 text-white rounded-lg p-3 font-semibold active:bg-green-800 disabled:opacity-50 transition-colors">
               {confirmScore.isPending ? 'Processing...' : 'Confirm ✅'}
             </button>
@@ -79,6 +84,33 @@ export default function MatchDetail() {
             </button>
           </div>
         </div>
+      )}
+
+      {match.score_confirmed && user && (user.id === match.player1.id || user.id === match.player2.id) && (
+        reviewData?.reviewed ? (
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h2 className="font-semibold text-gray-700 mb-2">Your Review</h2>
+            <div className="flex flex-wrap gap-2">
+              {reviewData.review?.tags.map(t => (
+                <span key={t.id} className="px-3 py-1.5 rounded-full text-sm font-medium bg-green-100 text-green-700">{t.name}</span>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setShowReviewModal(true)}
+            className="w-full bg-green-50 text-green-700 rounded-xl p-4 font-semibold hover:bg-green-100 active:bg-green-200 transition-colors">
+            ⭐ Review {user.id === match.player1.id ? match.player2.name : match.player1.name}
+          </button>
+        )
+      )}
+
+      {showReviewModal && match && user && (
+        <ReviewModal
+          matchId={match.id}
+          opponentName={user.id === match.player1.id ? match.player2.name : match.player1.name}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={() => toast('Review submitted! ⭐')}
+        />
       )}
 
       {match.status === 'scheduled' && user && (

@@ -44,6 +44,19 @@ export interface Notification {
   id: number; message: string; read: boolean; created_at: string; link: string | null;
 }
 
+export interface ReviewTag {
+  id: number; name: string; category: string;
+}
+
+export interface PlayerReview {
+  id: number; reviewer_id: number; reviewee_id: number; match_id: number;
+  tags: ReviewTag[]; created_at: string;
+}
+
+export interface TagCount {
+  tag: ReviewTag; count: number;
+}
+
 export interface LeaderboardEntry {
   id: number; name: string; ntrp: number | null; elo: number;
   wins: number; losses: number; matches_played: number;

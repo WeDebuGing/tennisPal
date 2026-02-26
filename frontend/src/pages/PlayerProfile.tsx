@@ -2,6 +2,7 @@ import { useParams, Link } from 'react-router-dom';
 import { usePlayer, useH2H } from '../hooks/usePlayers';
 import { useAuth } from '../context/AuthContext';
 import { Spinner, ErrorBox } from '../components/ui';
+import ProfileTags from '../components/ProfileTags';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -39,6 +40,8 @@ export default function PlayerProfile() {
           <p className="text-sm">You <span className="text-green-600 font-bold">{h2h.wins}</span> – <span className="text-red-600 font-bold">{h2h.losses}</span> {player.name}</p>
         </div>
       )}
+
+      <ProfileTags userId={player.id} />
 
       {player.availabilities && player.availabilities.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm p-4">

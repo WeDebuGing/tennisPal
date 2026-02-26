@@ -194,6 +194,45 @@ class Match(db.Model):
         }
 
 
+class ReviewTag(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False, unique=True)
+    category = db.Column(db.String(30), nullable=False)  # play_style, sportsmanship, logistics, vibe
+
+    def to_dict(self):
+        return {'id': self.id, 'name': self.name, 'category': self.category}
+
+
+# Association table for PlayerReview <-> ReviewTag
+review_tags_assoc = db.Table('review_tags_assoc',
+    db.Column('review_id', db.Integer, db.ForeignKey('player_review.id'), primary_key=True),
+    db.Column('tag_id', db.Integer, db.ForeignKey('review_tag.id'), primary_key=True),
+)
+
+
+class PlayerReview(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    reviewer_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    reviewee_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    match_id = db.Column(db.Integer, db.ForeignKey('match.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    reviewer = db.relationship('User', foreign_keys=[reviewer_id])
+    reviewee = db.relationship('User', foreign_keys=[reviewee_id])
+    match = db.relationship('Match', backref='reviews')
+    tags = db.relationship('ReviewTag', secondary=review_tags_assoc, lazy='joined')
+
+    __table_args__ = (db.UniqueConstraint('reviewer_id', 'match_id', name='uq_reviewer_match'),)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'reviewer_id': self.reviewer_id,
+            'reviewee_id': self.reviewee_id, 'match_id': self.match_id,
+            'tags': [t.to_dict() for t in self.tags],
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class Court(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(200), nullable=False)
