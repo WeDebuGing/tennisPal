@@ -16,6 +16,8 @@ class User(db.Model):
     city = db.Column(db.String(100), default="Pittsburgh")
     notify_sms = db.Column(db.Boolean, default=False)
     notify_email = db.Column(db.Boolean, default=True)
+    is_admin = db.Column(db.Boolean, default=False)
+    is_banned = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     availabilities = db.relationship('Availability', backref='user', lazy=True, cascade='all,delete-orphan')
@@ -63,6 +65,8 @@ class User(db.Model):
                 'matches_played': self.matches_played,
                 'unique_opponents': self.unique_opponents,
                 'reliability': self.reliability,
+                'is_admin': self.is_admin,
+                'is_banned': self.is_banned,
                 'availabilities': [a.to_dict() for a in self.availabilities],
                 'created_at': self.created_at.isoformat() if self.created_at else None,
             })
