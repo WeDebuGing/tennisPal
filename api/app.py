@@ -92,7 +92,8 @@ def update_profile():
     if not user:
         return jsonify(error='User not found.'), 404
     data = request.get_json() or {}
-    ALLOWED = ('name', 'phone', 'ntrp', 'city')
+    ALLOWED = ('name', 'phone', 'email', 'ntrp', 'city', 'preferred_courts')
+    import re
     for field in ALLOWED:
         if field in data:
             val = data[field]
@@ -101,11 +102,27 @@ def update_profile():
                 if not val:
                     return jsonify(error='Name cannot be empty.'), 400
             if field == 'ntrp' and val is not None:
-                val = float(val)
+                try:
+                    val = float(val)
+                except (ValueError, TypeError):
+                    return jsonify(error='Invalid NTRP value.'), 400
+                if val < 1.0 or val > 7.0:
+                    return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+                valid_ntrps = [round(x * 0.5, 1) for x in range(2, 15)]
+                if val not in valid_ntrps:
+                    return jsonify(error='NTRP must be a valid level (1.0–7.0 in 0.5 increments).'), 400
+            if field == 'email':
+                val = (val or '').strip() or None
+                if val and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', val):
+                    return jsonify(error='Invalid email format.'), 400
+                if val and User.query.filter(User.email == val, User.id != uid).first():
+                    return jsonify(error='Email already registered.'), 409
             if field == 'phone':
                 val = (val or '').strip() or None
                 if val and User.query.filter(User.phone == val, User.id != uid).first():
                     return jsonify(error='Phone already registered.'), 409
+            if field == 'preferred_courts':
+                val = (val or '').strip() or None
             setattr(user, field, val)
     db.session.commit()
     return jsonify(user=user.to_dict())
@@ -150,6 +167,54 @@ def create_post():
     return jsonify(post=p.to_dict()), 201
 
 
+@app.route('/api/posts/<int:post_id>', methods=['PUT'])
+@jwt_required()
+def update_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot edit a post that has been claimed.'), 400
+    data = request.get_json() or {}
+    if 'play_date' in data:
+        try:
+            pd = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify(error='Invalid play_date format. Use YYYY-MM-DD.'), 400
+        if pd < date.today():
+            return jsonify(error='play_date must be today or in the future.'), 400
+        post.play_date = pd
+    if 'start_time' in data:
+        post.start_time = data['start_time']
+    if 'end_time' in data:
+        post.end_time = data['end_time']
+    if 'court' in data:
+        post.court = data['court'] or 'Flexible'
+    if 'match_type' in data:
+        post.match_type = data['match_type']
+    if 'level_min' in data:
+        post.level_min = float(data['level_min']) if data['level_min'] else None
+    if 'level_max' in data:
+        post.level_max = float(data['level_max']) if data['level_max'] else None
+    db.session.commit()
+    return jsonify(post=post.to_dict())
+
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@jwt_required()
+def delete_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot delete a post that has been claimed.'), 400
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
 @app.route('/api/posts/<int:post_id>/claim', methods=['POST'])
 @jwt_required()
 def claim_post(post_id):
@@ -178,12 +243,35 @@ def claim_post(post_id):
 @app.route('/api/players')
 def get_players():
     day = request.args.get('day', '')
-    users = User.query.order_by(User.name).all()
+    search = request.args.get('search', '').strip()
+    ntrp_min = request.args.get('ntrp_min', type=float)
+    ntrp_max = request.args.get('ntrp_max', type=float)
+    court = request.args.get('court', '').strip()
+    sort = request.args.get('sort', 'name')  # name, ntrp, activity
+
+    q = User.query
+    if search:
+        q = q.filter(User.name.ilike(f'%{search}%'))
+    if ntrp_min is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp >= ntrp_min)
+    if ntrp_max is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp <= ntrp_max)
+    if court:
+        q = q.filter(User.preferred_courts.ilike(f'%{court}%'))
+
+    if sort == 'ntrp':
+        q = q.order_by(User.ntrp.desc().nullslast(), User.name)
+    elif sort == 'activity':
+        q = q.order_by(User.created_at.desc(), User.name)
+    else:
+        q = q.order_by(User.name)
+
+    users = q.all()
     if day != '':
         day_int = int(day)
         user_ids = {a.user_id for a in Availability.query.filter_by(day_of_week=day_int).all()}
         users = [u for u in users if u.id in user_ids]
-    return jsonify(players=[u.to_dict(brief=True) for u in users])
+    return jsonify(players=[{**u.to_dict(brief=True), 'preferred_courts': u.preferred_courts} for u in users])
 
 
 @app.route('/api/players/<int:user_id>')
@@ -1058,6 +1146,12 @@ if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
 
 with app.app_context():
     db.create_all()
+    # Add preferred_courts column if missing (SQLite doesn't auto-add via create_all)
+    try:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN preferred_courts VARCHAR(500)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 if __name__ == '__main__':
     debug = not RELEASE_MODE
