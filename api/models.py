@@ -14,6 +14,7 @@ class User(db.Model):
     ntrp = db.Column(db.Float, nullable=True)
     elo = db.Column(db.Integer, default=1200)
     city = db.Column(db.String(100), default="Pittsburgh")
+    preferred_courts = db.Column(db.String(500), nullable=True)
     notify_sms = db.Column(db.Boolean, default=False)
     notify_email = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
@@ -60,7 +61,7 @@ class User(db.Model):
         d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo}
         if not brief:
             d.update({
-                'email': self.email, 'phone': self.phone,
+                'email': self.email, 'phone': self.phone, 'preferred_courts': self.preferred_courts,
                 'wins': self.wins, 'losses': self.losses,
                 'matches_played': self.matches_played,
                 'unique_opponents': self.unique_opponents,

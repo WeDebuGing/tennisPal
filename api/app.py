@@ -92,7 +92,8 @@ def update_profile():
     if not user:
         return jsonify(error='User not found.'), 404
     data = request.get_json() or {}
-    ALLOWED = ('name', 'phone', 'ntrp', 'city')
+    ALLOWED = ('name', 'phone', 'email', 'ntrp', 'city', 'preferred_courts')
+    import re
     for field in ALLOWED:
         if field in data:
             val = data[field]
@@ -101,11 +102,27 @@ def update_profile():
                 if not val:
                     return jsonify(error='Name cannot be empty.'), 400
             if field == 'ntrp' and val is not None:
-                val = float(val)
+                try:
+                    val = float(val)
+                except (ValueError, TypeError):
+                    return jsonify(error='Invalid NTRP value.'), 400
+                if val < 1.0 or val > 7.0:
+                    return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+                valid_ntrps = [round(x * 0.5, 1) for x in range(2, 15)]
+                if val not in valid_ntrps:
+                    return jsonify(error='NTRP must be a valid level (1.0–7.0 in 0.5 increments).'), 400
+            if field == 'email':
+                val = (val or '').strip() or None
+                if val and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', val):
+                    return jsonify(error='Invalid email format.'), 400
+                if val and User.query.filter(User.email == val, User.id != uid).first():
+                    return jsonify(error='Email already registered.'), 409
             if field == 'phone':
                 val = (val or '').strip() or None
                 if val and User.query.filter(User.phone == val, User.id != uid).first():
                     return jsonify(error='Phone already registered.'), 409
+            if field == 'preferred_courts':
+                val = (val or '').strip() or None
             setattr(user, field, val)
     db.session.commit()
     return jsonify(user=user.to_dict())
@@ -115,11 +132,109 @@ def update_profile():
 
 @app.route('/api/posts')
 def get_posts():
-    posts = LookingToPlay.query.filter(
+    q = LookingToPlay.query.filter(
         LookingToPlay.claimed_by_id.is_(None),
         LookingToPlay.play_date >= date.today()
-    ).order_by(LookingToPlay.play_date, LookingToPlay.start_time).all()
-    return jsonify(posts=[p.to_dict() for p in posts if p.is_active])
+    )
+
+    # Filter: NTRP level range
+    level_min = request.args.get('level_min', type=float)
+    level_max = request.args.get('level_max', type=float)
+    if level_min is not None:
+        # Post's max level must be >= filter min (or post has no max)
+        q = q.filter(db.or_(LookingToPlay.level_max >= level_min, LookingToPlay.level_max.is_(None)))
+    if level_max is not None:
+        # Post's min level must be <= filter max (or post has no min)
+        q = q.filter(db.or_(LookingToPlay.level_min <= level_max, LookingToPlay.level_min.is_(None)))
+
+    # Filter: court/location (case-insensitive substring match)
+    court = request.args.get('court', '').strip()
+    if court:
+        q = q.filter(LookingToPlay.court.ilike(f'%{court}%'))
+
+    # Filter: date range
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    if date_from:
+        try:
+            q = q.filter(LookingToPlay.play_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(LookingToPlay.play_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+
+    # Sort
+    sort = request.args.get('sort', 'newest')
+    if sort == 'closest_date':
+        q = q.order_by(LookingToPlay.play_date, LookingToPlay.start_time)
+    elif sort == 'skill_match':
+        # Need current user's NTRP for skill sorting; fall back to newest
+        current_user = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from flask_jwt_extended import decode_token
+                token_data = decode_token(auth_header.split(' ')[1])
+                current_user = User.query.get(int(token_data['sub']))
+            except Exception:
+                pass
+        if current_user and current_user.ntrp:
+            user_ntrp = current_user.ntrp
+            # Sort by how close the post's level midpoint is to user's NTRP
+            mid = db.func.coalesce(
+                (db.func.coalesce(LookingToPlay.level_min, LookingToPlay.level_max, user_ntrp)
+                 + db.func.coalesce(LookingToPlay.level_max, LookingToPlay.level_min, user_ntrp)) / 2.0,
+                user_ntrp
+            )
+            q = q.order_by(db.func.abs(mid - user_ntrp), LookingToPlay.play_date)
+        else:
+            q = q.order_by(LookingToPlay.created_at.desc())
+    else:  # newest
+        q = q.order_by(LookingToPlay.created_at.desc())
+
+    # "For You" personalization: if requested, prioritize skill + court match
+    for_you = request.args.get('for_you', '').lower() in ('1', 'true')
+    posts = [p.to_dict() for p in q.all() if p.is_active]
+
+    if for_you:
+        current_user = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from flask_jwt_extended import decode_token
+                token_data = decode_token(auth_header.split(' ')[1])
+                current_user = User.query.get(int(token_data['sub']))
+            except Exception:
+                pass
+        if current_user:
+            user_ntrp = current_user.ntrp
+            user_courts = (current_user.preferred_courts or '').lower().split(',')
+            user_courts = [c.strip() for c in user_courts if c.strip()]
+
+            def score(p):
+                s = 0
+                # NTRP match scoring (lower distance = better)
+                if user_ntrp and (p.get('level_min') or p.get('level_max')):
+                    lo = p.get('level_min') or p.get('level_max')
+                    hi = p.get('level_max') or p.get('level_min')
+                    if lo <= user_ntrp <= hi:
+                        s += 10  # perfect match
+                    else:
+                        s += max(0, 8 - abs(user_ntrp - (lo + hi) / 2))
+                elif user_ntrp:
+                    s += 5  # no level restriction = open to all
+                # Court match
+                if user_courts and p.get('court'):
+                    if p['court'].lower() in user_courts or any(c in p['court'].lower() for c in user_courts):
+                        s += 5
+                return s
+
+            posts.sort(key=lambda p: (-score(p), p.get('play_date', '')))
+
+    return jsonify(posts=posts)
 
 
 @app.route('/api/posts', methods=['POST'])
@@ -150,6 +265,54 @@ def create_post():
     return jsonify(post=p.to_dict()), 201
 
 
+@app.route('/api/posts/<int:post_id>', methods=['PUT'])
+@jwt_required()
+def update_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot edit a post that has been claimed.'), 400
+    data = request.get_json() or {}
+    if 'play_date' in data:
+        try:
+            pd = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify(error='Invalid play_date format. Use YYYY-MM-DD.'), 400
+        if pd < date.today():
+            return jsonify(error='play_date must be today or in the future.'), 400
+        post.play_date = pd
+    if 'start_time' in data:
+        post.start_time = data['start_time']
+    if 'end_time' in data:
+        post.end_time = data['end_time']
+    if 'court' in data:
+        post.court = data['court'] or 'Flexible'
+    if 'match_type' in data:
+        post.match_type = data['match_type']
+    if 'level_min' in data:
+        post.level_min = float(data['level_min']) if data['level_min'] else None
+    if 'level_max' in data:
+        post.level_max = float(data['level_max']) if data['level_max'] else None
+    db.session.commit()
+    return jsonify(post=post.to_dict())
+
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@jwt_required()
+def delete_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot delete a post that has been claimed.'), 400
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
 @app.route('/api/posts/<int:post_id>/claim', methods=['POST'])
 @jwt_required()
 def claim_post(post_id):
@@ -178,12 +341,35 @@ def claim_post(post_id):
 @app.route('/api/players')
 def get_players():
     day = request.args.get('day', '')
-    users = User.query.order_by(User.name).all()
+    search = request.args.get('search', '').strip()
+    ntrp_min = request.args.get('ntrp_min', type=float)
+    ntrp_max = request.args.get('ntrp_max', type=float)
+    court = request.args.get('court', '').strip()
+    sort = request.args.get('sort', 'name')  # name, ntrp, activity
+
+    q = User.query
+    if search:
+        q = q.filter(User.name.ilike(f'%{search}%'))
+    if ntrp_min is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp >= ntrp_min)
+    if ntrp_max is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp <= ntrp_max)
+    if court:
+        q = q.filter(User.preferred_courts.ilike(f'%{court}%'))
+
+    if sort == 'ntrp':
+        q = q.order_by(User.ntrp.desc().nullslast(), User.name)
+    elif sort == 'activity':
+        q = q.order_by(User.created_at.desc(), User.name)
+    else:
+        q = q.order_by(User.name)
+
+    users = q.all()
     if day != '':
         day_int = int(day)
         user_ids = {a.user_id for a in Availability.query.filter_by(day_of_week=day_int).all()}
         users = [u for u in users if u.id in user_ids]
-    return jsonify(players=[u.to_dict(brief=True) for u in users])
+    return jsonify(players=[{**u.to_dict(brief=True), 'preferred_courts': u.preferred_courts} for u in users])
 
 
 @app.route('/api/players/<int:user_id>')
@@ -1058,6 +1244,12 @@ if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
 
 with app.app_context():
     db.create_all()
+    # Add preferred_courts column if missing (SQLite doesn't auto-add via create_all)
+    try:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN preferred_courts VARCHAR(500)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 if __name__ == '__main__':
     debug = not RELEASE_MODE
