@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { usePosts, useClaimPost } from '../hooks/usePosts';
-import { useUpcomingMatches } from '../hooks/useMatches';
+import { usePosts, useRequestPost } from '../hooks/usePosts';
+import { useUpcomingMatches, useMatches } from '../hooks/useMatches';
 import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
@@ -9,13 +10,26 @@ export default function Home() {
   const { user } = useAuth();
   const { data: posts, isLoading, error, refetch } = usePosts();
   const { data: upcoming } = useUpcomingMatches();
-  const claimMutation = useClaimPost();
+  const { data: matchData } = useMatches();
+  const requestMutation = useRequestPost();
   const { toast } = useToast();
+  const [requestedPosts, setRequestedPosts] = useState<Set<number>>(new Set());
 
-  const handleClaim = (id: number) => {
-    claimMutation.mutate(id, {
-      onSuccess: () => toast('You\'re in! Match created 🎾'),
-      onError: () => toast('Failed to claim post', 'error'),
+  // Track posts the user has already sent requests for
+  const sentRequestPostIds = new Set(
+    matchData?.sent_invites?.filter(inv => inv.post_id).map(inv => inv.post_id) ?? []
+  );
+
+  const handleRequest = (id: number) => {
+    requestMutation.mutate(id, {
+      onSuccess: () => {
+        toast('Request sent! ✉️ The poster will review it.');
+        setRequestedPosts(prev => new Set(prev).add(id));
+      },
+      onError: (err: any) => {
+        const msg = err?.response?.data?.error || 'Failed to send request';
+        toast(msg, 'error');
+      },
     });
   };
 
@@ -60,29 +74,39 @@ export default function Home() {
        error ? <ErrorBox message="Failed to load posts" onRetry={refetch} /> :
        !posts?.length ? <EmptyState icon="📝" title="No posts yet" subtitle="Be the first to post — tap + below!" /> : (
         <div className="space-y-3">
-          {posts.map(p => (
-            <div key={p.id} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500 active:bg-green-50 transition-colors">
-              <div className="flex justify-between items-start gap-2">
-                <div className="min-w-0">
-                  <Link to={`/players/${p.user_id}`} className="font-semibold text-green-700 hover:underline truncate">{p.author_name}</Link>
-                  {p.author_ntrp && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">NTRP {p.author_ntrp}</span>}
+          {posts.map(p => {
+            const alreadyRequested = requestedPosts.has(p.id) || sentRequestPostIds.has(p.id);
+            return (
+              <div key={p.id} className="bg-white rounded-xl shadow-sm p-4 border-l-4 border-green-500 active:bg-green-50 transition-colors">
+                <div className="flex justify-between items-start gap-2">
+                  <div className="min-w-0">
+                    <Link to={`/players/${p.user_id}`} className="font-semibold text-green-700 hover:underline truncate">{p.author_name}</Link>
+                    {p.author_ntrp && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">NTRP {p.author_ntrp}</span>}
+                  </div>
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full shrink-0">{p.match_type}</span>
                 </div>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full shrink-0">{p.match_type}</span>
+                <p className="text-sm text-gray-600 mt-2">📅 {fmt(p.play_date)} · ⏰ {fmtTime(p.start_time)}–{fmtTime(p.end_time)}</p>
+                {p.court && <p className="text-sm text-gray-500">📍 {p.court}</p>}
+                {(p.level_min || p.level_max) && <p className="text-xs text-gray-400 mt-1">Level: {p.level_min}–{p.level_max}</p>}
+                {user && user.id !== p.user_id && (
+                  alreadyRequested ? (
+                    <div className="mt-3 text-sm text-green-600 font-medium flex items-center gap-1.5">
+                      <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      Request sent — waiting for response
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => handleRequest(p.id)}
+                      disabled={requestMutation.isPending}
+                      className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors w-full sm:w-auto"
+                    >
+                      {requestMutation.isPending ? 'Sending...' : "I'm In! 🎾"}
+                    </button>
+                  )
+                )}
               </div>
-              <p className="text-sm text-gray-600 mt-2">📅 {fmt(p.play_date)} · ⏰ {fmtTime(p.start_time)}–{fmtTime(p.end_time)}</p>
-              {p.court && <p className="text-sm text-gray-500">📍 {p.court}</p>}
-              {(p.level_min || p.level_max) && <p className="text-xs text-gray-400 mt-1">Level: {p.level_min}–{p.level_max}</p>}
-              {user && user.id !== p.user_id && (
-                <button
-                  onClick={() => handleClaim(p.id)}
-                  disabled={claimMutation.isPending}
-                  className="mt-3 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 active:bg-green-800 disabled:opacity-50 transition-colors w-full sm:w-auto"
-                >
-                  {claimMutation.isPending ? 'Joining...' : "I'm In! 🎾"}
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

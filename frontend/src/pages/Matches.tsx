@@ -12,7 +12,8 @@ export default function Matches() {
   const { data: recentResults, isLoading: recentLoading } = useRecentResults();
   const respondMutation = useRespondInvite();
   const { toast } = useToast();
-  const [showInvites, setShowInvites] = useState(false);
+  const hasPending = (myData?.pending_invites?.length ?? 0) > 0;
+  const [showInvites, setShowInvites] = useState(hasPending);
 
   const handleRespond = (id: number, action: 'accept' | 'decline') => {
     respondMutation.mutate({ id, action }, {
@@ -39,7 +40,7 @@ export default function Matches() {
             className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
           >
             <span>
-              📩 Invites
+              📩 Requests &amp; Invites
               {pending.length > 0 && (
                 <span className="ml-2 bg-yellow-400 text-yellow-900 text-xs font-bold px-2 py-0.5 rounded-full">
                   {pending.length} pending
@@ -56,8 +57,14 @@ export default function Matches() {
             <div className="px-4 pb-4 space-y-2">
               {pending.map(inv => (
                 <div key={inv.id} className="bg-yellow-50 border-l-4 border-yellow-400 rounded-lg p-3">
-                  <p className="text-sm font-semibold">{inv.from_user.name} invited you</p>
+                  <p className="text-sm font-semibold">
+                    {inv.post_id
+                      ? <>{inv.from_user.name} wants to play</>
+                      : <>{inv.from_user.name} invited you</>
+                    }
+                  </p>
                   <p className="text-xs text-gray-500 mt-0.5">{inv.play_date} · {inv.start_time}–{inv.end_time} · {inv.court}</p>
+                  {inv.post_id && <p className="text-xs text-yellow-700 mt-0.5">↳ From your post</p>}
                   <div className="flex gap-2 mt-2">
                     <button onClick={() => handleRespond(inv.id, 'accept')} disabled={respondMutation.isPending}
                       className="flex-1 bg-green-600 text-white text-xs py-1.5 rounded-lg disabled:opacity-50">Accept</button>
@@ -68,7 +75,12 @@ export default function Matches() {
               ))}
               {sent.map(inv => (
                 <div key={inv.id} className="bg-blue-50 border-l-4 border-blue-300 rounded-lg p-3">
-                  <p className="text-sm">Invited <span className="font-semibold">{inv.to_user.name}</span></p>
+                  <p className="text-sm">
+                    {inv.post_id
+                      ? <>Requested to play with <span className="font-semibold">{inv.to_user.name}</span></>
+                      : <>Invited <span className="font-semibold">{inv.to_user.name}</span></>
+                    }
+                  </p>
                   <p className="text-xs text-gray-400">{inv.play_date} · ⏳ Pending</p>
                 </div>
               ))}

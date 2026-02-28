@@ -21,6 +21,7 @@ export interface Post {
 
 export interface MatchInvite {
   id: number; from_user: { id: number; name: string }; to_user: { id: number; name: string };
+  post_id: number | null;
   play_date: string; start_time: string; end_time: string;
   court: string; match_type: string; status: string; created_at: string;
 }
