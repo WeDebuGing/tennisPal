@@ -243,12 +243,35 @@ def claim_post(post_id):
 @app.route('/api/players')
 def get_players():
     day = request.args.get('day', '')
-    users = User.query.order_by(User.name).all()
+    search = request.args.get('search', '').strip()
+    ntrp_min = request.args.get('ntrp_min', type=float)
+    ntrp_max = request.args.get('ntrp_max', type=float)
+    court = request.args.get('court', '').strip()
+    sort = request.args.get('sort', 'name')  # name, ntrp, activity
+
+    q = User.query
+    if search:
+        q = q.filter(User.name.ilike(f'%{search}%'))
+    if ntrp_min is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp >= ntrp_min)
+    if ntrp_max is not None:
+        q = q.filter(User.ntrp.isnot(None), User.ntrp <= ntrp_max)
+    if court:
+        q = q.filter(User.preferred_courts.ilike(f'%{court}%'))
+
+    if sort == 'ntrp':
+        q = q.order_by(User.ntrp.desc().nullslast(), User.name)
+    elif sort == 'activity':
+        q = q.order_by(User.created_at.desc(), User.name)
+    else:
+        q = q.order_by(User.name)
+
+    users = q.all()
     if day != '':
         day_int = int(day)
         user_ids = {a.user_id for a in Availability.query.filter_by(day_of_week=day_int).all()}
         users = [u for u in users if u.id in user_ids]
-    return jsonify(players=[u.to_dict(brief=True) for u in users])
+    return jsonify(players=[{**u.to_dict(brief=True), 'preferred_courts': u.preferred_courts} for u in users])
 
 
 @app.route('/api/players/<int:user_id>')
