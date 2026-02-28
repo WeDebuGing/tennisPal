@@ -4,6 +4,8 @@ export interface User {
   wins?: number; losses?: number; matches_played?: number;
   unique_opponents?: number; reliability?: number;
   availabilities?: Availability[]; created_at?: string;
+  onboarding_complete?: boolean;
+  preferred_courts?: string[];
 }
 
 export interface Availability {
