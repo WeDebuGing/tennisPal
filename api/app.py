@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court
+from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court, ReviewTag, PlayerReview
 from notifications import notify_user
 from datetime import datetime, date, timedelta
 import os
@@ -754,6 +754,71 @@ def get_courts_nearby():
             results.append(d)
     results.sort(key=lambda r: r['distance_km'])
     return jsonify(courts=results)
+
+
+# ── Reviews ──
+
+@app.route('/api/review-tags')
+def get_review_tags():
+    tags = ReviewTag.query.order_by(ReviewTag.category, ReviewTag.name).all()
+    grouped = {}
+    for t in tags:
+        grouped.setdefault(t.category, []).append(t.to_dict())
+    return jsonify(tags=grouped)
+
+
+@app.route('/api/matches/<int:match_id>/review', methods=['POST'])
+@jwt_required()
+def submit_review(match_id):
+    uid = int(get_jwt_identity())
+    match = Match.query.get_or_404(match_id)
+    if uid not in (match.player1_id, match.player2_id):
+        return jsonify(error='Not authorized.'), 403
+    if not match.score_confirmed:
+        return jsonify(error='Match score must be confirmed before reviewing.'), 400
+    existing = PlayerReview.query.filter_by(reviewer_id=uid, match_id=match_id).first()
+    if existing:
+        return jsonify(error='You already reviewed this match.'), 409
+    data = request.get_json() or {}
+    tag_ids = data.get('tag_ids', [])
+    if not tag_ids:
+        return jsonify(error='Select at least one tag.'), 400
+    tags = ReviewTag.query.filter(ReviewTag.id.in_(tag_ids)).all()
+    if len(tags) != len(tag_ids):
+        return jsonify(error='Invalid tag IDs.'), 400
+    reviewee_id = match.player2_id if match.player1_id == uid else match.player1_id
+    review = PlayerReview(reviewer_id=uid, reviewee_id=reviewee_id, match_id=match_id)
+    review.tags = tags
+    db.session.add(review)
+    db.session.commit()
+    return jsonify(review=review.to_dict()), 201
+
+
+@app.route('/api/matches/<int:match_id>/review-status')
+@jwt_required()
+def review_status(match_id):
+    uid = int(get_jwt_identity())
+    review = PlayerReview.query.filter_by(reviewer_id=uid, match_id=match_id).first()
+    return jsonify(reviewed=review is not None, review=review.to_dict() if review else None)
+
+
+@app.route('/api/users/<int:user_id>/tags')
+def get_user_tags(user_id):
+    User.query.get_or_404(user_id)
+    reviews = PlayerReview.query.filter_by(reviewee_id=user_id).all()
+    tag_counts = {}
+    for r in reviews:
+        for t in r.tags:
+            key = t.id
+            if key not in tag_counts:
+                tag_counts[key] = {'tag': t.to_dict(), 'count': 0}
+            tag_counts[key]['count'] += 1
+    # Only return tags with 2+ endorsements for public view
+    public_tags = [v for v in tag_counts.values() if v['count'] >= 2]
+    public_tags.sort(key=lambda x: -x['count'])
+    # Also return all tags (for the user themselves or debug)
+    all_tags = sorted(tag_counts.values(), key=lambda x: -x['count'])
+    return jsonify(public_tags=public_tags, all_tags=all_tags)
 
 
 # ── Settings ──

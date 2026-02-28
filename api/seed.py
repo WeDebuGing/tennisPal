@@ -1,6 +1,6 @@
 """Seed the database with test users, matches, availability, and posts."""
 from app import app, db
-from models import User, Availability, LookingToPlay, Match, MatchInvite, Notification, Court
+from models import User, Availability, LookingToPlay, Match, MatchInvite, Notification, Court, ReviewTag, PlayerReview
 from werkzeug.security import generate_password_hash
 from datetime import date, datetime, timedelta
 import json, random
@@ -144,6 +144,42 @@ def seed():
         db.session.add(Notification(user_id=users[0].id, message="Raj Patel invited you to play on " + (today + timedelta(days=4)).strftime("%b %d")))
         db.session.add(Notification(user_id=users[0].id, message="Your match vs Emily Davis is in 2 days!", read=True))
         db.session.add(Notification(user_id=users[0].id, message="Score confirmed: You beat Emily Davis 6-4, 6-3 🎉", read=True))
+
+        # Review Tags
+        REVIEW_TAGS = {
+            'play_style': ['Big Server', 'Consistent Baseliner', 'Net Rusher', 'Heavy Topspin', 'Crafty', 'All-Court Player'],
+            'sportsmanship': ['Great Sport', 'Fair Calls', 'Encouraging', 'Competitive'],
+            'logistics': ['Punctual', 'Flexible Scheduling', 'Good Communication'],
+            'vibe': ['Fun Rally Partner', 'Intense Competitor', 'Great for Practice'],
+        }
+        tag_objects = []
+        for category, names in REVIEW_TAGS.items():
+            for name in names:
+                t = ReviewTag(name=name, category=category)
+                db.session.add(t)
+                tag_objects.append(t)
+        db.session.flush()
+
+        # Seed some reviews so tags show up on profiles
+        # Give Gordon (user 0) several "Great Sport" and "Consistent Baseliner" reviews
+        great_sport = next(t for t in tag_objects if t.name == 'Great Sport')
+        consistent = next(t for t in tag_objects if t.name == 'Consistent Baseliner')
+        punctual = next(t for t in tag_objects if t.name == 'Punctual')
+        fun_rally = next(t for t in tag_objects if t.name == 'Fun Rally Partner')
+
+        # Reviews for Gordon from different opponents (need confirmed matches)
+        # Match 0: Gordon vs Emily (users[0] vs users[3]) - Emily reviews Gordon
+        r1 = PlayerReview(reviewer_id=users[3].id, reviewee_id=users[0].id, match_id=1)
+        r1.tags = [great_sport, consistent, punctual]
+        db.session.add(r1)
+        # Match 1: Gordon vs Mike (users[0] vs users[2]) - Mike reviews Gordon
+        r2 = PlayerReview(reviewer_id=users[2].id, reviewee_id=users[0].id, match_id=2)
+        r2.tags = [great_sport, fun_rally, consistent]
+        db.session.add(r2)
+        # Match 2: Gordon vs Sarah (users[0] vs users[1]) - Sarah reviews Gordon
+        r3 = PlayerReview(reviewer_id=users[1].id, reviewee_id=users[0].id, match_id=3)
+        r3.tags = [great_sport, punctual]
+        db.session.add(r3)
 
         # Courts
         for c in PITTSBURGH_COURTS:
