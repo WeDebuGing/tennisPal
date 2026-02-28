@@ -167,6 +167,54 @@ def create_post():
     return jsonify(post=p.to_dict()), 201
 
 
+@app.route('/api/posts/<int:post_id>', methods=['PUT'])
+@jwt_required()
+def update_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot edit a post that has been claimed.'), 400
+    data = request.get_json() or {}
+    if 'play_date' in data:
+        try:
+            pd = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify(error='Invalid play_date format. Use YYYY-MM-DD.'), 400
+        if pd < date.today():
+            return jsonify(error='play_date must be today or in the future.'), 400
+        post.play_date = pd
+    if 'start_time' in data:
+        post.start_time = data['start_time']
+    if 'end_time' in data:
+        post.end_time = data['end_time']
+    if 'court' in data:
+        post.court = data['court'] or 'Flexible'
+    if 'match_type' in data:
+        post.match_type = data['match_type']
+    if 'level_min' in data:
+        post.level_min = float(data['level_min']) if data['level_min'] else None
+    if 'level_max' in data:
+        post.level_max = float(data['level_max']) if data['level_max'] else None
+    db.session.commit()
+    return jsonify(post=post.to_dict())
+
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@jwt_required()
+def delete_post(post_id):
+    uid = int(get_jwt_identity())
+    post = LookingToPlay.query.get_or_404(post_id)
+    if post.user_id != uid:
+        return jsonify(error='Not authorized.'), 403
+    if post.claimed_by_id is not None:
+        return jsonify(error='Cannot delete a post that has been claimed.'), 400
+    db.session.delete(post)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
 @app.route('/api/posts/<int:post_id>/claim', methods=['POST'])
 @jwt_required()
 def claim_post(post_id):
