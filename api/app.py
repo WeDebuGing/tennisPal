@@ -783,8 +783,10 @@ def cancel_match(match_id):
 
 @app.route('/api/leaderboard')
 def leaderboard():
-    users = User.query.all()
-    board = sorted(users, key=lambda u: u.wins, reverse=True)
+    users = User.query.filter(
+        ~User.email.like('%@tennispal.com')
+    ).all()
+    board = sorted(users, key=lambda u: (u.elo, u.wins), reverse=True)
     return jsonify(leaderboard=[{
         'id': u.id, 'name': u.name, 'ntrp': u.ntrp, 'elo': u.elo,
         'wins': u.wins, 'losses': u.losses, 'matches_played': u.matches_played,
