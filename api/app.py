@@ -132,11 +132,109 @@ def update_profile():
 
 @app.route('/api/posts')
 def get_posts():
-    posts = LookingToPlay.query.filter(
+    q = LookingToPlay.query.filter(
         LookingToPlay.claimed_by_id.is_(None),
         LookingToPlay.play_date >= date.today()
-    ).order_by(LookingToPlay.play_date, LookingToPlay.start_time).all()
-    return jsonify(posts=[p.to_dict() for p in posts if p.is_active])
+    )
+
+    # Filter: NTRP level range
+    level_min = request.args.get('level_min', type=float)
+    level_max = request.args.get('level_max', type=float)
+    if level_min is not None:
+        # Post's max level must be >= filter min (or post has no max)
+        q = q.filter(db.or_(LookingToPlay.level_max >= level_min, LookingToPlay.level_max.is_(None)))
+    if level_max is not None:
+        # Post's min level must be <= filter max (or post has no min)
+        q = q.filter(db.or_(LookingToPlay.level_min <= level_max, LookingToPlay.level_min.is_(None)))
+
+    # Filter: court/location (case-insensitive substring match)
+    court = request.args.get('court', '').strip()
+    if court:
+        q = q.filter(LookingToPlay.court.ilike(f'%{court}%'))
+
+    # Filter: date range
+    date_from = request.args.get('date_from')
+    date_to = request.args.get('date_to')
+    if date_from:
+        try:
+            q = q.filter(LookingToPlay.play_date >= datetime.strptime(date_from, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+    if date_to:
+        try:
+            q = q.filter(LookingToPlay.play_date <= datetime.strptime(date_to, '%Y-%m-%d').date())
+        except ValueError:
+            pass
+
+    # Sort
+    sort = request.args.get('sort', 'newest')
+    if sort == 'closest_date':
+        q = q.order_by(LookingToPlay.play_date, LookingToPlay.start_time)
+    elif sort == 'skill_match':
+        # Need current user's NTRP for skill sorting; fall back to newest
+        current_user = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from flask_jwt_extended import decode_token
+                token_data = decode_token(auth_header.split(' ')[1])
+                current_user = User.query.get(int(token_data['sub']))
+            except Exception:
+                pass
+        if current_user and current_user.ntrp:
+            user_ntrp = current_user.ntrp
+            # Sort by how close the post's level midpoint is to user's NTRP
+            mid = db.func.coalesce(
+                (db.func.coalesce(LookingToPlay.level_min, LookingToPlay.level_max, user_ntrp)
+                 + db.func.coalesce(LookingToPlay.level_max, LookingToPlay.level_min, user_ntrp)) / 2.0,
+                user_ntrp
+            )
+            q = q.order_by(db.func.abs(mid - user_ntrp), LookingToPlay.play_date)
+        else:
+            q = q.order_by(LookingToPlay.created_at.desc())
+    else:  # newest
+        q = q.order_by(LookingToPlay.created_at.desc())
+
+    # "For You" personalization: if requested, prioritize skill + court match
+    for_you = request.args.get('for_you', '').lower() in ('1', 'true')
+    posts = [p.to_dict() for p in q.all() if p.is_active]
+
+    if for_you:
+        current_user = None
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer '):
+            try:
+                from flask_jwt_extended import decode_token
+                token_data = decode_token(auth_header.split(' ')[1])
+                current_user = User.query.get(int(token_data['sub']))
+            except Exception:
+                pass
+        if current_user:
+            user_ntrp = current_user.ntrp
+            user_courts = (current_user.preferred_courts or '').lower().split(',')
+            user_courts = [c.strip() for c in user_courts if c.strip()]
+
+            def score(p):
+                s = 0
+                # NTRP match scoring (lower distance = better)
+                if user_ntrp and (p.get('level_min') or p.get('level_max')):
+                    lo = p.get('level_min') or p.get('level_max')
+                    hi = p.get('level_max') or p.get('level_min')
+                    if lo <= user_ntrp <= hi:
+                        s += 10  # perfect match
+                    else:
+                        s += max(0, 8 - abs(user_ntrp - (lo + hi) / 2))
+                elif user_ntrp:
+                    s += 5  # no level restriction = open to all
+                # Court match
+                if user_courts and p.get('court'):
+                    if p['court'].lower() in user_courts or any(c in p['court'].lower() for c in user_courts):
+                        s += 5
+                return s
+
+            posts.sort(key=lambda p: (-score(p), p.get('play_date', '')))
+
+    return jsonify(posts=posts)
 
 
 @app.route('/api/posts', methods=['POST'])

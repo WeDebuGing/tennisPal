@@ -2,10 +2,31 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../api/client';
 import { Post } from '../types';
 
-export function usePosts() {
+export interface PostFilters {
+  level_min?: number;
+  level_max?: number;
+  court?: string;
+  date_from?: string;
+  date_to?: string;
+  sort?: 'newest' | 'closest_date' | 'skill_match';
+  for_you?: boolean;
+}
+
+export function usePosts(filters?: PostFilters) {
   return useQuery<Post[]>({
-    queryKey: ['posts'],
-    queryFn: () => api.get('/posts').then(r => r.data.posts),
+    queryKey: ['posts', filters],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (filters?.level_min != null) params.set('level_min', String(filters.level_min));
+      if (filters?.level_max != null) params.set('level_max', String(filters.level_max));
+      if (filters?.court) params.set('court', filters.court);
+      if (filters?.date_from) params.set('date_from', filters.date_from);
+      if (filters?.date_to) params.set('date_to', filters.date_to);
+      if (filters?.sort) params.set('sort', filters.sort);
+      if (filters?.for_you) params.set('for_you', '1');
+      const qs = params.toString();
+      return api.get(`/posts${qs ? '?' + qs : ''}`).then(r => r.data.posts);
+    },
   });
 }
 

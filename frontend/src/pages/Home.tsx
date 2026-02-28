@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
-import { usePosts, useClaimPost, useDeletePost, useUpdatePost, UpdatePostData } from '../hooks/usePosts';
+import { usePosts, useClaimPost, useDeletePost, useUpdatePost, UpdatePostData, PostFilters } from '../hooks/usePosts';
 import { useUpcomingMatches } from '../hooks/useMatches';
 import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
@@ -113,9 +113,118 @@ function ConfirmDeleteModal({ onClose, onConfirm, isPending }: { onClose: () => 
   );
 }
 
+function FeedFilters({ filters, onChange, isLoggedIn }: { filters: PostFilters; onChange: (f: PostFilters) => void; isLoggedIn: boolean }) {
+  const [open, setOpen] = useState(false);
+  const hasFilters = !!(filters.level_min || filters.level_max || filters.court || filters.date_from || filters.date_to);
+
+  const update = (patch: Partial<PostFilters>) => onChange({ ...filters, ...patch });
+  const clearFilters = () => onChange({ sort: filters.sort, for_you: filters.for_you });
+
+  return (
+    <div className="mb-4">
+      {/* Sort & Filter toggle row */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Sort pills */}
+        {(['newest', 'closest_date', 'skill_match'] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => update({ sort: s, for_you: false })}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              filters.sort === s && !filters.for_you
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {s === 'newest' ? '🆕 Newest' : s === 'closest_date' ? '📅 Soonest' : '🎯 Skill Match'}
+          </button>
+        ))}
+        {isLoggedIn && (
+          <button
+            onClick={() => update({ for_you: !filters.for_you })}
+            className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ${
+              filters.for_you ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            ✨ For You
+          </button>
+        )}
+        <button
+          onClick={() => setOpen(!open)}
+          className={`text-xs px-3 py-1.5 rounded-full font-medium transition-colors ml-auto ${
+            hasFilters ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+        >
+          🔍 Filter{hasFilters ? ' ●' : ''}
+        </button>
+      </div>
+
+      {/* Collapsible filter panel */}
+      {open && (
+        <div className="mt-3 bg-white rounded-xl shadow-sm border p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500">Min NTRP</label>
+              <input
+                type="number" step="0.5" min="1" max="7" placeholder="Any"
+                value={filters.level_min ?? ''}
+                onChange={e => update({ level_min: e.target.value ? parseFloat(e.target.value) : undefined })}
+                className="w-full border rounded-lg px-3 py-1.5 mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500">Max NTRP</label>
+              <input
+                type="number" step="0.5" min="1" max="7" placeholder="Any"
+                value={filters.level_max ?? ''}
+                onChange={e => update({ level_max: e.target.value ? parseFloat(e.target.value) : undefined })}
+                className="w-full border rounded-lg px-3 py-1.5 mt-1 text-sm"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-500">Court / Location</label>
+            <input
+              type="text" placeholder="e.g. Schenley"
+              value={filters.court ?? ''}
+              onChange={e => update({ court: e.target.value || undefined })}
+              className="w-full border rounded-lg px-3 py-1.5 mt-1 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-gray-500">From Date</label>
+              <input
+                type="date"
+                value={filters.date_from ?? ''}
+                onChange={e => update({ date_from: e.target.value || undefined })}
+                className="w-full border rounded-lg px-3 py-1.5 mt-1 text-sm"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-500">To Date</label>
+              <input
+                type="date"
+                value={filters.date_to ?? ''}
+                onChange={e => update({ date_to: e.target.value || undefined })}
+                className="w-full border rounded-lg px-3 py-1.5 mt-1 text-sm"
+              />
+            </div>
+          </div>
+          {hasFilters && (
+            <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-700 font-medium">
+              ✕ Clear filters
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Home() {
   const { user } = useAuth();
-  const { data: posts, isLoading, error, refetch } = usePosts();
+  const [filters, setFilters] = useState<PostFilters>({ sort: 'newest' });
+  const { data: posts, isLoading, error, refetch } = usePosts(filters);
   const { data: upcoming } = useUpcomingMatches();
   const claimMutation = useClaimPost();
   const deleteMutation = useDeletePost();
@@ -185,6 +294,7 @@ export default function Home() {
         <h1 className="text-2xl font-bold text-green-700">🎾 Looking to Play</h1>
         <Link to="/post" className="bg-green-600 text-white text-sm font-semibold px-4 py-2 rounded-full hover:bg-green-700 shadow-md transition-colors">+ Post</Link>
       </div>
+      <FeedFilters filters={filters} onChange={setFilters} isLoggedIn={!!user} />
       {isLoading ? <Spinner text="Loading posts..." /> :
        error ? <ErrorBox message="Failed to load posts" onRetry={refetch} /> :
        !posts?.length ? <EmptyState icon="📝" title="No posts yet" subtitle="Be the first to post — tap + below!" /> : (
