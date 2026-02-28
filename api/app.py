@@ -92,7 +92,8 @@ def update_profile():
     if not user:
         return jsonify(error='User not found.'), 404
     data = request.get_json() or {}
-    ALLOWED = ('name', 'phone', 'ntrp', 'city')
+    ALLOWED = ('name', 'phone', 'email', 'ntrp', 'city', 'preferred_courts')
+    import re
     for field in ALLOWED:
         if field in data:
             val = data[field]
@@ -101,11 +102,27 @@ def update_profile():
                 if not val:
                     return jsonify(error='Name cannot be empty.'), 400
             if field == 'ntrp' and val is not None:
-                val = float(val)
+                try:
+                    val = float(val)
+                except (ValueError, TypeError):
+                    return jsonify(error='Invalid NTRP value.'), 400
+                if val < 1.0 or val > 7.0:
+                    return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+                valid_ntrps = [round(x * 0.5, 1) for x in range(2, 15)]
+                if val not in valid_ntrps:
+                    return jsonify(error='NTRP must be a valid level (1.0–7.0 in 0.5 increments).'), 400
+            if field == 'email':
+                val = (val or '').strip() or None
+                if val and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', val):
+                    return jsonify(error='Invalid email format.'), 400
+                if val and User.query.filter(User.email == val, User.id != uid).first():
+                    return jsonify(error='Email already registered.'), 409
             if field == 'phone':
                 val = (val or '').strip() or None
                 if val and User.query.filter(User.phone == val, User.id != uid).first():
                     return jsonify(error='Phone already registered.'), 409
+            if field == 'preferred_courts':
+                val = (val or '').strip() or None
             setattr(user, field, val)
     db.session.commit()
     return jsonify(user=user.to_dict())
@@ -1058,6 +1075,12 @@ if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
 
 with app.app_context():
     db.create_all()
+    # Add preferred_courts column if missing (SQLite doesn't auto-add via create_all)
+    try:
+        db.session.execute(db.text("ALTER TABLE user ADD COLUMN preferred_courts VARCHAR(500)"))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 if __name__ == '__main__':
     debug = not RELEASE_MODE
