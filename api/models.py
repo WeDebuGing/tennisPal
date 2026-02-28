@@ -18,6 +18,8 @@ class User(db.Model):
     notify_email = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_banned = db.Column(db.Boolean, default=False)
+    onboarding_complete = db.Column(db.Boolean, default=False)
+    preferred_courts = db.Column(db.Text, nullable=True)  # JSON array of court names
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     availabilities = db.relationship('Availability', backref='user', lazy=True, cascade='all,delete-orphan')
@@ -57,7 +59,7 @@ class User(db.Model):
         return round(played / total * 100)
 
     def to_dict(self, brief=False):
-        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo}
+        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo, 'onboarding_complete': self.onboarding_complete}
         if not brief:
             d.update({
                 'email': self.email, 'phone': self.phone,
@@ -67,6 +69,8 @@ class User(db.Model):
                 'reliability': self.reliability,
                 'is_admin': self.is_admin,
                 'is_banned': self.is_banned,
+                'onboarding_complete': self.onboarding_complete,
+                'preferred_courts': json.loads(self.preferred_courts) if self.preferred_courts else [],
                 'availabilities': [a.to_dict() for a in self.availabilities],
                 'created_at': self.created_at.isoformat() if self.created_at else None,
             })

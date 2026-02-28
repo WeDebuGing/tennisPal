@@ -90,7 +90,7 @@ def seed():
         for u in USERS:
             user = User(name=u["name"], email=u["email"],
                         password_hash=generate_password_hash(u["password"]),
-                        ntrp=u["ntrp"], elo=u["elo"])
+                        ntrp=u["ntrp"], elo=u["elo"], onboarding_complete=True)
             db.session.add(user)
             users.append(user)
         db.session.flush()

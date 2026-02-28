@@ -111,6 +111,40 @@ def update_profile():
     return jsonify(user=user.to_dict())
 
 
+# ── Onboarding ──
+
+@app.route('/api/onboarding', methods=['PUT'])
+@jwt_required()
+def complete_onboarding():
+    uid = int(get_jwt_identity())
+    user = User.query.get(uid)
+    if not user:
+        return jsonify(error='User not found.'), 404
+    data = request.get_json() or {}
+    if 'ntrp' in data and data['ntrp'] is not None:
+        user.ntrp = float(data['ntrp'])
+    if 'name' in data:
+        val = (data['name'] or '').strip()
+        if val:
+            user.name = val
+    if 'phone' in data:
+        val = (data['phone'] or '').strip() or None
+        if val and User.query.filter(User.phone == val, User.id != uid).first():
+            return jsonify(error='Phone already registered.'), 409
+        user.phone = val
+    if 'email' in data:
+        val = (data['email'] or '').strip() or None
+        if val and User.query.filter(User.email == val, User.id != uid).first():
+            return jsonify(error='Email already registered.'), 409
+        user.email = val
+    if 'preferred_courts' in data:
+        import json as _json
+        user.preferred_courts = _json.dumps(data['preferred_courts']) if data['preferred_courts'] else None
+    user.onboarding_complete = True
+    db.session.commit()
+    return jsonify(user=user.to_dict())
+
+
 # ── Feed (Posts) ──
 
 @app.route('/api/posts')
