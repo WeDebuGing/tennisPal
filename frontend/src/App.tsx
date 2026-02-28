@@ -24,6 +24,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import Settings from './pages/Settings';
 import Matchmaking from './pages/Matchmaking';
 import Landing from './pages/Landing';
+import Onboarding from './pages/Onboarding';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -32,6 +33,14 @@ function AppRoutes() {
       <Spinner text="Starting TennisPal…" />
     </div>
   );
+
+  if (user && !user.onboarding_complete) {
+    return (
+      <Routes>
+        <Route path="*" element={<Onboarding />} />
+      </Routes>
+    );
+  }
 
   if (!user) {
     return (
