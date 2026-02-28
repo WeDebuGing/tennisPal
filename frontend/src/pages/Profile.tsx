@@ -4,23 +4,122 @@ import { Link } from 'react-router-dom';
 import { useMatches, useRespondInvite } from '../hooks/useMatches';
 import { useNotifications } from '../hooks/useNotifications';
 import { useSettings, useUpdateSettings } from '../hooks/useSettings';
+import { useUpdateProfile } from '../hooks/useProfile';
 import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 
 type SubTab = 'info' | 'matches' | 'notifications' | 'settings';
 
+const NTRP_LEVELS = [1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0];
+
 function InfoSection() {
-  const { user, logout } = useAuth();
+  const { user, logout, updateUser } = useAuth();
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(user?.name ?? '');
+  const [email, setEmail] = useState(user?.email ?? '');
+  const [phone, setPhone] = useState(user?.phone ?? '');
+  const [ntrp, setNtrp] = useState<string>(user?.ntrp?.toString() ?? '');
+  const [preferredCourts, setPreferredCourts] = useState(user?.preferred_courts ?? '');
+  const updateProfile = useUpdateProfile();
+  const { toast } = useToast();
+
   if (!user) return null;
+
+  const startEdit = () => {
+    setName(user.name);
+    setEmail(user.email ?? '');
+    setPhone(user.phone ?? '');
+    setNtrp(user.ntrp?.toString() ?? '');
+    setPreferredCourts(user.preferred_courts ?? '');
+    setEditing(true);
+  };
+
+  const handleSave = () => {
+    if (!name.trim()) { toast('Name cannot be empty', 'error'); return; }
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast('Invalid email format', 'error'); return; }
+
+    updateProfile.mutate(
+      {
+        name: name.trim(),
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        ntrp: ntrp ? parseFloat(ntrp) : null,
+        preferred_courts: preferredCourts.trim() || undefined,
+      },
+      {
+        onSuccess: (updatedUser) => {
+          updateUser(updatedUser);
+          setEditing(false);
+          toast('Profile updated!');
+        },
+        onError: (err: any) => {
+          const msg = err?.response?.data?.error || 'Failed to update profile';
+          toast(msg, 'error');
+        },
+      }
+    );
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-3">
+        <div className="bg-white rounded-xl shadow p-5 space-y-4">
+          <h2 className="text-lg font-bold text-green-700">Edit Profile</h2>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+            <input value={name} onChange={e => setName(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+            <input type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">NTRP Level</label>
+            <select value={ntrp} onChange={e => setNtrp(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 bg-white">
+              <option value="">Not set</option>
+              {NTRP_LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Preferred Courts</label>
+            <input value={preferredCourts} onChange={e => setPreferredCourts(e.target.value)}
+              placeholder="e.g. Schenley Park, Mellon Park"
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500" />
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleSave} disabled={updateProfile.isPending}
+              className="flex-1 bg-green-600 text-white py-2 rounded-lg font-semibold text-sm disabled:opacity-50">
+              {updateProfile.isPending ? 'Saving...' : 'Save'}
+            </button>
+            <button onClick={() => setEditing(false)}
+              className="flex-1 bg-gray-100 text-gray-600 py-2 rounded-lg font-semibold text-sm">Cancel</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-xl shadow p-5">
-        <h2 className="text-2xl font-bold text-green-700">{user.name}</h2>
+        <div className="flex justify-between items-start">
+          <h2 className="text-2xl font-bold text-green-700">{user.name}</h2>
+          <button onClick={startEdit} className="text-sm text-green-600 font-medium hover:text-green-700">✏️ Edit</button>
+        </div>
         <div className="text-sm text-gray-500 mt-1">{user.email} {user.phone && `· ${user.phone}`}</div>
         <div className="flex gap-4 mt-2 text-sm">
           {user.ntrp && <span>NTRP {user.ntrp}</span>}
           <span>ELO {user.elo}</span>
         </div>
+        {user.preferred_courts && <div className="text-sm text-gray-500 mt-2">🎾 {user.preferred_courts}</div>}
       </div>
       <Link to={`/players/${user.id}`} className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">View Full Profile</Link>
       <Link to="/availability" className="block bg-white rounded-xl shadow p-4 text-center text-green-700 font-semibold hover:bg-green-50">📅 Manage Availability</Link>
