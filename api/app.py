@@ -799,9 +799,29 @@ def get_notifications():
     uid = int(get_jwt_identity())
     notes = Notification.query.filter_by(user_id=uid).order_by(Notification.created_at.desc()).limit(50).all()
     result = [n.to_dict() for n in notes]
-    Notification.query.filter_by(user_id=uid, read=False).update({'read': True})
-    db.session.commit()
     return jsonify(notifications=result)
+
+
+@app.route('/api/notifications/unread-count')
+@jwt_required()
+def notifications_unread_count():
+    uid = int(get_jwt_identity())
+    count = Notification.query.filter_by(user_id=uid, read=False).count()
+    return jsonify(count=count)
+
+
+@app.route('/api/notifications/mark-read', methods=['POST'])
+@jwt_required()
+def mark_notifications_read():
+    uid = int(get_jwt_identity())
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids')
+    if ids:
+        Notification.query.filter(Notification.user_id == uid, Notification.id.in_(ids)).update({'read': True}, synchronize_session=False)
+    else:
+        Notification.query.filter_by(user_id=uid, read=False).update({'read': True})
+    db.session.commit()
+    return jsonify(ok=True)
 
 
 # ── Matchmaking ──
