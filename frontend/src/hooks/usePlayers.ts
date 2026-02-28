@@ -2,10 +2,29 @@ import { useQuery } from '@tanstack/react-query';
 import api from '../api/client';
 import { User, Match } from '../types';
 
-export function usePlayers(day: string) {
-  return useQuery<User[]>({
-    queryKey: ['players', day],
-    queryFn: () => api.get('/players', { params: day !== '' ? { day } : {} }).then(r => r.data.players),
+export interface PlayerSearchParams {
+  day?: string;
+  search?: string;
+  ntrp_min?: number;
+  ntrp_max?: number;
+  court?: string;
+  sort?: 'name' | 'ntrp' | 'activity';
+}
+
+export type PlayerResult = User & { preferred_courts?: string };
+
+export function usePlayers(params: PlayerSearchParams = {}) {
+  const queryParams: Record<string, string> = {};
+  if (params.day) queryParams.day = params.day;
+  if (params.search) queryParams.search = params.search;
+  if (params.ntrp_min !== undefined) queryParams.ntrp_min = String(params.ntrp_min);
+  if (params.ntrp_max !== undefined) queryParams.ntrp_max = String(params.ntrp_max);
+  if (params.court) queryParams.court = params.court;
+  if (params.sort) queryParams.sort = params.sort;
+
+  return useQuery<PlayerResult[]>({
+    queryKey: ['players', queryParams],
+    queryFn: () => api.get('/players', { params: queryParams }).then(r => r.data.players),
   });
 }
 
