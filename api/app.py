@@ -557,8 +557,18 @@ def get_recent_results():
 @app.route('/api/matches/<int:match_id>')
 @jwt_required()
 def get_match(match_id):
+    uid = int(get_jwt_identity())
     match = Match.query.get_or_404(match_id)
-    return jsonify(match=match.to_dict())
+    data = match.to_dict()
+    # Include contact info only for confirmed match participants
+    is_participant = uid in (match.player1_id, match.player2_id)
+    if is_participant and match.status == 'completed' and match.score_confirmed:
+        opponent = match.player2 if match.player1_id == uid else match.player1
+        data['opponent_contact'] = {
+            'email': opponent.email,
+            'phone': opponent.phone,
+        }
+    return jsonify(match=data)
 
 
 def validate_structured_score(sets_data, match_format):
