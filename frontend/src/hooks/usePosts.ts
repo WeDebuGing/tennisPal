@@ -9,19 +9,16 @@ export function usePosts() {
   });
 }
 
-export function useClaimPost() {
+export function useRequestPost() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number) => api.post(`/posts/${id}/claim`),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['posts'] });
-      const previous = qc.getQueryData<Post[]>(['posts']);
-      qc.setQueryData<Post[]>(['posts'], (old) => old?.filter(p => p.id !== id) ?? []);
-      return { previous };
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['posts'] });
+      qc.invalidateQueries({ queryKey: ['matches'] });
     },
-    onError: (_err, _id, context) => {
-      if (context?.previous) qc.setQueryData(['posts'], context.previous);
-    },
-    onSettled: () => qc.invalidateQueries({ queryKey: ['posts'] }),
   });
 }
+
+// Keep backward compat alias
+export const useClaimPost = useRequestPost;

@@ -135,6 +135,7 @@ class MatchInvite(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     from_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     to_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    post_id = db.Column(db.Integer, db.ForeignKey('looking_to_play.id'), nullable=True)
     play_date = db.Column(db.Date, nullable=False)
     start_time = db.Column(db.String(5), nullable=False)
     end_time = db.Column(db.String(5), nullable=False)
@@ -145,12 +146,14 @@ class MatchInvite(db.Model):
 
     from_user = db.relationship('User', foreign_keys=[from_user_id])
     to_user = db.relationship('User', foreign_keys=[to_user_id])
+    post = db.relationship('LookingToPlay', foreign_keys=[post_id])
 
     def to_dict(self):
         return {
             'id': self.id,
             'from_user': {'id': self.from_user.id, 'name': self.from_user.name} if self.from_user else None,
             'to_user': {'id': self.to_user.id, 'name': self.to_user.name} if self.to_user else None,
+            'post_id': self.post_id,
             'play_date': self.play_date.isoformat(),
             'start_time': self.start_time, 'end_time': self.end_time,
             'court': self.court, 'match_type': self.match_type, 'status': self.status,

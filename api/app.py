@@ -156,21 +156,30 @@ def claim_post(post_id):
     uid = int(get_jwt_identity())
     post = LookingToPlay.query.get_or_404(post_id)
     if post.user_id == uid:
-        return jsonify(error="Can't claim your own post."), 400
+        return jsonify(error="Can't request your own post."), 400
     if not post.is_active:
         return jsonify(error='Post no longer available.'), 400
-    post.claimed_by_id = uid
-    match = Match(player1_id=post.user_id, player2_id=uid,
-                  play_date=post.play_date, match_type=post.match_type)
-    db.session.add(match)
+    # Check for existing pending request from this user for this post
+    existing = MatchInvite.query.filter_by(
+        from_user_id=uid, to_user_id=post.user_id, post_id=post_id, status='pending'
+    ).first()
+    if existing:
+        return jsonify(error='You already sent a request for this post.'), 409
+    # Create a match request (invite) to the post owner instead of instant match
+    invite = MatchInvite(
+        from_user_id=uid, to_user_id=post.user_id, post_id=post_id,
+        play_date=post.play_date, start_time=post.start_time, end_time=post.end_time,
+        court=post.court or 'TBD', match_type=post.match_type,
+    )
+    db.session.add(invite)
     user = User.query.get(uid)
     post_owner = User.query.get(post.user_id)
-    msg = f"{user.name} claimed your post for {post.play_date.strftime('%b %d')}!"
+    msg = f"{user.name} wants to play on {post.play_date.strftime('%b %d')}! Review and accept/decline."
     n = Notification(user_id=post.user_id, message=msg)
     db.session.add(n)
     db.session.commit()
-    notify_user(post_owner, msg, subject="Someone claimed your post!")
-    return jsonify(match=match.to_dict()), 201
+    notify_user(post_owner, msg, subject="New match request!")
+    return jsonify(invite=invite.to_dict()), 201
 
 
 # ── Players ──
@@ -291,17 +300,37 @@ def accept_invite(invite_id):
         return jsonify(error='Not authorized.'), 403
     if inv.from_user_id == inv.to_user_id:
         return jsonify(error="Cannot accept a self-invite."), 400
+    if inv.status != 'pending':
+        return jsonify(error=f'Invite already {inv.status}.'), 400
     inv.status = 'accepted'
-    match = Match(player1_id=inv.from_user_id, player2_id=inv.to_user_id,
+    # If this invite came from a post, claim the post and decline other pending requests
+    if inv.post_id:
+        post = LookingToPlay.query.get(inv.post_id)
+        if post:
+            post.claimed_by_id = inv.from_user_id
+            # Decline all other pending requests for this post
+            other_requests = MatchInvite.query.filter(
+                MatchInvite.post_id == inv.post_id,
+                MatchInvite.id != inv.id,
+                MatchInvite.status == 'pending',
+            ).all()
+            for req in other_requests:
+                req.status = 'declined'
+                declined_user = User.query.get(req.from_user_id)
+                decline_msg = f"Your request to play on {req.play_date.strftime('%b %d')} was declined — the poster chose another player."
+                db.session.add(Notification(user_id=req.from_user_id, message=decline_msg))
+                if declined_user:
+                    notify_user(declined_user, decline_msg, subject="Match request declined")
+    match = Match(player1_id=inv.to_user_id, player2_id=inv.from_user_id,
                   play_date=inv.play_date, match_type=inv.match_type)
     db.session.add(match)
     user = User.query.get(uid)
-    inviter = User.query.get(inv.from_user_id)
-    msg = f"{user.name} accepted your invite for {inv.play_date.strftime('%b %d')}!"
+    requester = User.query.get(inv.from_user_id)
+    msg = f"{user.name} accepted your {'request' if inv.post_id else 'invite'} for {inv.play_date.strftime('%b %d')}!"
     n = Notification(user_id=inv.from_user_id, message=msg)
     db.session.add(n)
     db.session.commit()
-    notify_user(inviter, msg, subject="Invite accepted!")
+    notify_user(requester, msg, subject="Match confirmed!")
     return jsonify(match=match.to_dict())
 
 
@@ -312,14 +341,16 @@ def decline_invite(invite_id):
     inv = MatchInvite.query.get_or_404(invite_id)
     if inv.to_user_id != uid:
         return jsonify(error='Not authorized.'), 403
+    if inv.status != 'pending':
+        return jsonify(error=f'Invite already {inv.status}.'), 400
     inv.status = 'declined'
     user = User.query.get(uid)
-    inviter = User.query.get(inv.from_user_id)
-    msg = f"{user.name} declined your invite."
+    requester = User.query.get(inv.from_user_id)
+    msg = f"{user.name} declined your {'request' if inv.post_id else 'invite'}."
     n = Notification(user_id=inv.from_user_id, message=msg)
     db.session.add(n)
     db.session.commit()
-    notify_user(inviter, msg, subject="Invite declined")
+    notify_user(requester, msg, subject="Request declined" if inv.post_id else "Invite declined")
     return jsonify(ok=True)
 
 
