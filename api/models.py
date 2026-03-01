@@ -14,13 +14,12 @@ class User(db.Model):
     ntrp = db.Column(db.Float, nullable=True)
     elo = db.Column(db.Integer, default=1200)
     city = db.Column(db.String(100), default="Pittsburgh")
-    preferred_courts = db.Column(db.String(500), nullable=True)
+    preferred_courts = db.Column(db.Text, nullable=True)  # JSON array of court names
     notify_sms = db.Column(db.Boolean, default=False)
     notify_email = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_banned = db.Column(db.Boolean, default=False)
     onboarding_complete = db.Column(db.Boolean, default=False)
-    preferred_courts = db.Column(db.Text, nullable=True)  # JSON array of court names
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     availabilities = db.relationship('Availability', backref='user', lazy=True, cascade='all,delete-orphan')

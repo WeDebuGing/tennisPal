@@ -20,7 +20,7 @@ function InfoSection() {
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [ntrp, setNtrp] = useState<string>(user?.ntrp?.toString() ?? '');
   const [preferredCourts, setPreferredCourts] = useState(
-    Array.isArray(user?.preferred_courts) ? user.preferred_courts.join(', ') : (user?.preferred_courts ?? '')
+    Array.isArray(user?.preferred_courts) ? user.preferred_courts.join(', ') : ''
   );
   const updateProfile = useUpdateProfile();
   const { toast } = useToast();
@@ -32,7 +32,7 @@ function InfoSection() {
     setEmail(user.email ?? '');
     setPhone(user.phone ?? '');
     setNtrp(user.ntrp?.toString() ?? '');
-    setPreferredCourts(Array.isArray(user.preferred_courts) ? user.preferred_courts.join(', ') : (user.preferred_courts ?? ''));
+    setPreferredCourts(Array.isArray(user.preferred_courts) ? user.preferred_courts.join(', ') : '');
     setEditing(true);
   };
 

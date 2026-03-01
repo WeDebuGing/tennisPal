@@ -39,7 +39,15 @@ def register():
     phone = data.get('phone', '').strip() or None
     password = data.get('password', '')
     ntrp = data.get('ntrp')
-    ntrp = float(ntrp) if ntrp else None
+    if ntrp is not None:
+        try:
+            ntrp = float(ntrp)
+            if not (1.0 <= ntrp <= 7.0):
+                return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+        except (ValueError, TypeError):
+            return jsonify(error='Invalid NTRP rating.'), 400
+    else:
+        ntrp = None
 
     if not name or not password:
         return jsonify(error='Name and password required.'), 400
