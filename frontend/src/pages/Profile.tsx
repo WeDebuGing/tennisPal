@@ -19,7 +19,9 @@ function InfoSection() {
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
   const [ntrp, setNtrp] = useState<string>(user?.ntrp?.toString() ?? '');
-  const [preferredCourts, setPreferredCourts] = useState(user?.preferred_courts ?? '');
+  const [preferredCourts, setPreferredCourts] = useState(
+    Array.isArray(user?.preferred_courts) ? user.preferred_courts.join(', ') : (user?.preferred_courts ?? '')
+  );
   const updateProfile = useUpdateProfile();
   const { toast } = useToast();
 
@@ -30,7 +32,7 @@ function InfoSection() {
     setEmail(user.email ?? '');
     setPhone(user.phone ?? '');
     setNtrp(user.ntrp?.toString() ?? '');
-    setPreferredCourts(user.preferred_courts ?? '');
+    setPreferredCourts(Array.isArray(user.preferred_courts) ? user.preferred_courts.join(', ') : (user.preferred_courts ?? ''));
     setEditing(true);
   };
 
@@ -44,7 +46,7 @@ function InfoSection() {
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         ntrp: ntrp ? parseFloat(ntrp) : null,
-        preferred_courts: preferredCourts.trim() || undefined,
+        preferred_courts: preferredCourts.trim() ? preferredCourts.split(',').map(s => s.trim()).filter(Boolean) : undefined,
       },
       {
         onSuccess: (updatedUser) => {

@@ -1,4 +1,4 @@
-"""Add missing columns to the user table (city, preferred_courts, is_admin, is_banned)."""
+"""Add missing columns to the user table."""
 import sqlite3
 import os
 
@@ -6,9 +6,10 @@ DB_PATH = os.path.join(os.path.dirname(__file__), 'instance', 'tennispal.db')
 
 MIGRATIONS = [
     ("city", "ALTER TABLE user ADD COLUMN city VARCHAR(100) DEFAULT 'Pittsburgh'"),
-    ("preferred_courts", "ALTER TABLE user ADD COLUMN preferred_courts VARCHAR(500)"),
+    ("preferred_courts", "ALTER TABLE user ADD COLUMN preferred_courts TEXT"),
     ("is_admin", "ALTER TABLE user ADD COLUMN is_admin BOOLEAN DEFAULT 0"),
     ("is_banned", "ALTER TABLE user ADD COLUMN is_banned BOOLEAN DEFAULT 0"),
+    ("onboarding_complete", "ALTER TABLE user ADD COLUMN onboarding_complete BOOLEAN DEFAULT 0"),
 ]
 
 def migrate():

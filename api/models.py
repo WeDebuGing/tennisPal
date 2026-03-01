@@ -63,15 +63,14 @@ class User(db.Model):
         d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo, 'onboarding_complete': self.onboarding_complete}
         if not brief:
             d.update({
-                'email': self.email, 'phone': self.phone, 'preferred_courts': self.preferred_courts,
+                'email': self.email, 'phone': self.phone,
+                'preferred_courts': json.loads(self.preferred_courts) if self.preferred_courts else [],
                 'wins': self.wins, 'losses': self.losses,
                 'matches_played': self.matches_played,
                 'unique_opponents': self.unique_opponents,
                 'reliability': self.reliability,
                 'is_admin': self.is_admin,
                 'is_banned': self.is_banned,
-                'onboarding_complete': self.onboarding_complete,
-                'preferred_courts': json.loads(self.preferred_courts) if self.preferred_courts else [],
                 'availabilities': [a.to_dict() for a in self.availabilities],
                 'created_at': self.created_at.isoformat() if self.created_at else None,
             })

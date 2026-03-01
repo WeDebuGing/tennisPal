@@ -139,7 +139,13 @@ def complete_onboarding():
         return jsonify(error='User not found.'), 404
     data = request.get_json() or {}
     if 'ntrp' in data and data['ntrp'] is not None:
-        user.ntrp = float(data['ntrp'])
+        try:
+            ntrp_val = float(data['ntrp'])
+        except (ValueError, TypeError):
+            return jsonify(error='Invalid NTRP rating.'), 400
+        if not (1.0 <= ntrp_val <= 7.0):
+            return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+        user.ntrp = ntrp_val
     if 'name' in data:
         val = (data['name'] or '').strip()
         if val:

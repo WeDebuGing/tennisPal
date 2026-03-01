@@ -1,6 +1,6 @@
 export interface User {
   id: number; name: string; email?: string; phone?: string;
-  ntrp: number | null; elo: number; preferred_courts?: string;
+  ntrp: number | null; elo: number;
   wins?: number; losses?: number; matches_played?: number;
   unique_opponents?: number; reliability?: number;
   availabilities?: Availability[]; created_at?: string;
