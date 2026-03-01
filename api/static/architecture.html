@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TennisPal — System Architecture</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  h1 { text-align: center; margin-bottom: 0.5rem; font-size: 1.8rem; color: #38bdf8; }
+  .subtitle { text-align: center; color: #94a3b8; margin-bottom: 2rem; font-size: 0.95rem; }
+  .diagram { background: #1e293b; border-radius: 12px; padding: 2rem; margin-bottom: 2rem; overflow-x: auto; }
+  .diagram h2 { color: #38bdf8; margin-bottom: 1rem; font-size: 1.2rem; }
+  .mermaid { display: flex; justify-content: center; }
+  .section { background: #1e293b; border-radius: 12px; padding: 1.5rem; margin-bottom: 1.5rem; }
+  .section h2 { color: #38bdf8; margin-bottom: 1rem; font-size: 1.2rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; }
+  .section h3 { color: #7dd3fc; margin: 1rem 0 0.5rem; font-size: 1rem; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.5rem 0.75rem; border-bottom: 1px solid #334155; }
+  th { color: #94a3b8; font-weight: 600; }
+  td { color: #cbd5e1; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
+  .get { background: #064e3b; color: #6ee7b7; }
+  .post { background: #713f12; color: #fcd34d; }
+  .put { background: #1e3a5f; color: #7dd3fc; }
+  .delete { background: #7f1d1d; color: #fca5a5; }
+  code { background: #334155; padding: 2px 6px; border-radius: 4px; font-size: 0.85rem; color: #f1f5f9; }
+  .footer { text-align: center; color: #475569; font-size: 0.8rem; margin-top: 2rem; }
+</style>
+</head>
+<body>
+
+<h1>🎾 TennisPal System Architecture</h1>
+<p class="subtitle">Hostinger VPS (Debian 13) — 72.61.12.118</p>
+
+<!-- High-Level Architecture -->
+<div class="diagram">
+<h2>Infrastructure Overview</h2>
+<pre class="mermaid">
+graph TB
+    subgraph Client["🌐 Client"]
+        Browser["Browser / PWA"]
+    end
+
+    subgraph VPS["🖥️ Hostinger VPS (Debian 13)"]
+        subgraph Nginx["Nginx (port 80/443)"]
+            Static["/static/ → file serving"]
+            Proxy["/ → proxy_pass :5001"]
+        end
+
+        subgraph Flask["Flask App (:5001)"]
+            Auth["Auth (JWT)"]
+            API["REST API"]
+            StaticFiles["Built Frontend\n(Vite → static/)"]
+        end
+
+        DB[("SQLite\ninstance/tennispal.db")]
+    end
+
+    Browser -->|"HTTP/HTTPS"| Nginx
+    Static -->|"CSS/JS/HTML"| Browser
+    Proxy --> Flask
+    Flask --> DB
+
+    style Client fill:#1e3a5f,stroke:#38bdf8,color:#e2e8f0
+    style VPS fill:#1a1a2e,stroke:#334155,color:#e2e8f0
+    style Nginx fill:#064e3b,stroke:#6ee7b7,color:#e2e8f0
+    style Flask fill:#713f12,stroke:#fcd34d,color:#e2e8f0
+    style DB fill:#7f1d1d,stroke:#fca5a5,color:#e2e8f0
+</pre>
+</div>
+
+<!-- Data Model -->
+<div class="diagram">
+<h2>Data Model (ERD)</h2>
+<pre class="mermaid">
+erDiagram
+    User ||--o{ Availability : has
+    User ||--o{ LookingToPlay : posts
+    User ||--o{ MatchInvite : sends
+    User ||--o{ MatchInvite : receives
+    User ||--o{ Match : plays
+    User ||--o{ Notification : receives
+    User ||--o{ PlayerReview : writes
+    User ||--o{ PlayerReview : receives
+    LookingToPlay ||--o{ MatchInvite : generates
+    Match ||--o{ PlayerReview : has
+    PlayerReview }o--o{ ReviewTag : tagged
+
+    User {
+        int id PK
+        string name
+        string email UK
+        string phone UK
+        string password_hash
+        float ntrp
+        int elo
+        string city
+        text preferred_courts
+        bool notify_sms
+        bool notify_email
+        bool is_admin
+        bool is_banned
+        bool onboarding_complete
+        datetime created_at
+    }
+
+    LookingToPlay {
+        int id PK
+        int user_id FK
+        date play_date
+        string start_time
+        string end_time
+        string court
+        string match_type
+        float level_min
+        float level_max
+        int claimed_by_id FK
+        datetime created_at
+    }
+
+    MatchInvite {
+        int id PK
+        int from_user_id FK
+        int to_user_id FK
+        int post_id FK
+        date play_date
+        string start_time
+        string end_time
+        string court
+        string match_type
+        string status
+        datetime created_at
+    }
+
+    Match {
+        int id PK
+        int player1_id FK
+        int player2_id FK
+        date play_date
+        string match_type
+        string match_format
+        string status
+        string score
+        text sets
+        int score_submitted_by FK
+        bool score_confirmed
+        bool score_disputed
+        int winner_id FK
+        datetime created_at
+    }
+
+    Availability {
+        int id PK
+        int user_id FK
+        int day_of_week
+        string start_time
+        string end_time
+    }
+
+    Court {
+        int id PK
+        string name
+        string address
+        float lat
+        float lng
+        int num_courts
+        bool lighted
+        string surface
+        bool public
+    }
+
+    ReviewTag {
+        int id PK
+        string name UK
+        string category
+    }
+
+    PlayerReview {
+        int id PK
+        int reviewer_id FK
+        int reviewee_id FK
+        int match_id FK
+        datetime created_at
+    }
+
+    Notification {
+        int id PK
+        int user_id FK
+        string message
+        bool read
+        datetime created_at
+        string link
+    }
+</pre>
+</div>
+
+<!-- Request Flow -->
+<div class="diagram">
+<h2>Request Flow</h2>
+<pre class="mermaid">
+sequenceDiagram
+    participant B as Browser
+    participant N as Nginx :80
+    participant F as Flask :5001
+    participant D as SQLite
+
+    B->>N: GET / (or any route)
+    N->>F: proxy_pass
+    F->>F: Serve built frontend (static/)
+    F-->>B: HTML + JS bundle
+
+    Note over B: User interacts with SPA
+
+    B->>N: POST /api/auth/login
+    N->>F: proxy_pass
+    F->>D: Query user by email
+    D-->>F: User record
+    F->>F: Verify password, create JWT
+    F-->>B: { token: "eyJ..." }
+
+    Note over B: Subsequent requests include JWT
+
+    B->>N: GET /api/posts (Authorization: Bearer ...)
+    N->>F: proxy_pass
+    F->>F: Validate JWT
+    F->>D: Query posts
+    D-->>F: Post records
+    F-->>B: { posts: [...] }
+</pre>
+</div>
+
+<!-- Match Lifecycle -->
+<div class="diagram">
+<h2>Match Lifecycle</h2>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> PostCreated: User creates "Looking to Play"
+    PostCreated --> InviteSent: Another user sends invite
+    InviteSent --> InviteAccepted: Recipient accepts
+    InviteSent --> InviteDeclined: Recipient declines
+    InviteDeclined --> PostCreated: Post remains active
+    InviteAccepted --> MatchScheduled: Match created
+    MatchScheduled --> ScoreSubmitted: One player submits score
+    ScoreSubmitted --> ScoreConfirmed: Other player confirms
+    ScoreSubmitted --> ScoreDisputed: Other player disputes
+    ScoreConfirmed --> Completed: Elo updated
+    MatchScheduled --> Cancelled: Either player cancels
+    Completed --> Reviewed: Players tag each other
+    Completed --> [*]
+    Reviewed --> [*]
+</pre>
+</div>
+
+<!-- API Reference -->
+<div class="section">
+<h2>API Endpoints</h2>
+
+<h3>🔐 Auth</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/auth/register</code></td><td>Create account (name, email, phone, password)</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/auth/login</code></td><td>Login → JWT token</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/auth/me</code></td><td>Current user profile (JWT required)</td></tr>
+</table>
+
+<h3>👤 Profile & Onboarding</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge put">PUT</span></td><td><code>/api/profile</code></td><td>Update profile (name, ntrp, phone, courts)</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td><code>/api/onboarding</code></td><td>Complete onboarding (ntrp, city, courts)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/settings</code></td><td>Get notification settings</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td><code>/api/settings</code></td><td>Update notification settings</td></tr>
+</table>
+
+<h3>📋 Posts (Looking to Play)</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/posts</code></td><td>List posts (filterable by date, court, level)</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/posts</code></td><td>Create a new post</td></tr>
+<tr><td><span class="badge put">PUT</span></td><td><code>/api/posts/:id</code></td><td>Edit own post</td></tr>
+<tr><td><span class="badge delete">DELETE</span></td><td><code>/api/posts/:id</code></td><td>Delete own post</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/posts/:id/claim</code></td><td>Claim a post (legacy)</td></tr>
+</table>
+
+<h3>🤝 Invites & Matches</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/invites</code></td><td>Send match invite</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/invites/:id/accept</code></td><td>Accept invite → creates Match</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/invites/:id/decline</code></td><td>Decline invite</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matches</code></td><td>All user's matches</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matches/upcoming</code></td><td>Future scheduled matches</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matches/recent</code></td><td>Recent completed matches</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matches/:id</code></td><td>Match detail</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/matches/:id/score</code></td><td>Submit score (sets JSON)</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/matches/:id/confirm</code></td><td>Confirm opponent's score</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/matches/:id/cancel</code></td><td>Cancel match</td></tr>
+</table>
+
+<h3>👥 Players & Leaderboard</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/players</code></td><td>Search/filter players (name, ntrp range)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/players/:id</code></td><td>Player profile + stats</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/players/:id/h2h</code></td><td>Head-to-head record</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/leaderboard</code></td><td>Elo-sorted leaderboard</td></tr>
+</table>
+
+<h3>📅 Availability & Courts</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/availability</code></td><td>User's weekly availability</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/availability</code></td><td>Add availability slot</td></tr>
+<tr><td><span class="badge delete">DELETE</span></td><td><code>/api/availability/:id</code></td><td>Remove slot</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/courts</code></td><td>List courts (supports lat/lng/radius)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/courts/:id</code></td><td>Court detail</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/courts/nearby</code></td><td>Nearby courts by GPS</td></tr>
+</table>
+
+<h3>⭐ Reviews & Notifications</h3>
+<table>
+<tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/review-tags</code></td><td>Available review tags by category</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/matches/:id/review</code></td><td>Submit post-match review tags</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matches/:id/review-status</code></td><td>Check if review submitted</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/users/:id/tags</code></td><td>Player's received tags (aggregated)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/notifications</code></td><td>User's notifications (last 50)</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/notifications/unread-count</code></td><td>Unread notification count</td></tr>
+<tr><td><span class="badge post">POST</span></td><td><code>/api/notifications/mark-read</code></td><td>Mark notifications as read</td></tr>
+<tr><td><span class="badge get">GET</span></td><td><code>/api/matchmaking/suggestions</code></td><td>Elo-based match suggestions</td></tr>
+</table>
+</div>
+
+<!-- Tech Stack -->
+<div class="section">
+<h2>Tech Stack</h2>
+<table>
+<tr><th>Layer</th><th>Technology</th><th>Details</th></tr>
+<tr><td>Frontend</td><td>React + TypeScript + Vite</td><td>SPA built to <code>api/static/</code></td></tr>
+<tr><td>Styling</td><td>Tailwind CSS</td><td>Utility-first, mobile-friendly</td></tr>
+<tr><td>Backend</td><td>Flask (Python)</td><td>REST API, serves built frontend</td></tr>
+<tr><td>Auth</td><td>Flask-JWT-Extended</td><td>Bearer token auth</td></tr>
+<tr><td>ORM</td><td>Flask-SQLAlchemy</td><td>10 models, computed properties</td></tr>
+<tr><td>Database</td><td>SQLite</td><td><code>api/instance/tennispal.db</code></td></tr>
+<tr><td>Web Server</td><td>Nginx</td><td>Reverse proxy → Flask :5001</td></tr>
+<tr><td>Process</td><td>systemd</td><td><code>tennispal.service</code></td></tr>
+<tr><td>TLS</td><td>Let's Encrypt / Certbot</td><td><code>dev-tennispal.duckdns.org</code></td></tr>
+<tr><td>VCS</td><td>GitHub</td><td><code>WeDebuGing/tennisPal</code></td></tr>
+</table>
+</div>
+
+<div class="section">
+<h2>Key Design Decisions</h2>
+<table>
+<tr><th>Decision</th><th>Rationale</th></tr>
+<tr><td>SQLite over Postgres</td><td>Simple deployment, single-server, &lt;1000 users. Upgrade path: swap DB URI</td></tr>
+<tr><td>Elo rating system</td><td>Fair, well-understood ranking. Default 1200, K-factor adjustable</td></tr>
+<tr><td>Request → Accept flow</td><td>Prevents instant match-claiming; gives both players agency</td></tr>
+<tr><td>Score confirmation</td><td>Both players must agree on score for Elo to update</td></tr>
+<tr><td>Review tags (not free text)</td><td>Structured feedback, aggregatable, less toxic than open reviews</td></tr>
+<tr><td>JWT (not sessions)</td><td>Stateless auth, mobile-friendly, no server-side session store</td></tr>
+</table>
+</div>
+
+<p class="footer">Generated 2026-03-01 · TennisPal v1.0</p>
+
+<script>mermaid.initialize({ theme: 'dark', themeVariables: { primaryColor: '#1e3a5f', primaryBorderColor: '#38bdf8', lineColor: '#475569', textColor: '#e2e8f0' }});</script>
+</body>
+</html>
