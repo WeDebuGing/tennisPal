@@ -14,11 +14,12 @@ class User(db.Model):
     ntrp = db.Column(db.Float, nullable=True)
     elo = db.Column(db.Integer, default=1200)
     city = db.Column(db.String(100), default="Pittsburgh")
-    preferred_courts = db.Column(db.String(500), nullable=True)
+    preferred_courts = db.Column(db.Text, nullable=True)  # JSON array of court names
     notify_sms = db.Column(db.Boolean, default=False)
     notify_email = db.Column(db.Boolean, default=True)
     is_admin = db.Column(db.Boolean, default=False)
     is_banned = db.Column(db.Boolean, default=False)
+    onboarding_complete = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     availabilities = db.relationship('Availability', backref='user', lazy=True, cascade='all,delete-orphan')
@@ -58,10 +59,11 @@ class User(db.Model):
         return round(played / total * 100)
 
     def to_dict(self, brief=False):
-        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo}
+        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo, 'onboarding_complete': self.onboarding_complete}
         if not brief:
             d.update({
-                'email': self.email, 'phone': self.phone, 'preferred_courts': self.preferred_courts,
+                'email': self.email, 'phone': self.phone,
+                'preferred_courts': json.loads(self.preferred_courts) if self.preferred_courts else [],
                 'wins': self.wins, 'losses': self.losses,
                 'matches_played': self.matches_played,
                 'unique_opponents': self.unique_opponents,

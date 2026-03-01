@@ -39,7 +39,15 @@ def register():
     phone = data.get('phone', '').strip() or None
     password = data.get('password', '')
     ntrp = data.get('ntrp')
-    ntrp = float(ntrp) if ntrp else None
+    if ntrp is not None:
+        try:
+            ntrp = float(ntrp)
+            if not (1.0 <= ntrp <= 7.0):
+                return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+        except (ValueError, TypeError):
+            return jsonify(error='Invalid NTRP rating.'), 400
+    else:
+        ntrp = None
 
     if not name or not password:
         return jsonify(error='Name and password required.'), 400
@@ -124,6 +132,46 @@ def update_profile():
             if field == 'preferred_courts':
                 val = (val or '').strip() or None
             setattr(user, field, val)
+    db.session.commit()
+    return jsonify(user=user.to_dict())
+
+
+# ── Onboarding ──
+
+@app.route('/api/onboarding', methods=['PUT'])
+@jwt_required()
+def complete_onboarding():
+    uid = int(get_jwt_identity())
+    user = User.query.get(uid)
+    if not user:
+        return jsonify(error='User not found.'), 404
+    data = request.get_json() or {}
+    if 'ntrp' in data and data['ntrp'] is not None:
+        try:
+            ntrp_val = float(data['ntrp'])
+        except (ValueError, TypeError):
+            return jsonify(error='Invalid NTRP rating.'), 400
+        if not (1.0 <= ntrp_val <= 7.0):
+            return jsonify(error='NTRP must be between 1.0 and 7.0.'), 400
+        user.ntrp = ntrp_val
+    if 'name' in data:
+        val = (data['name'] or '').strip()
+        if val:
+            user.name = val
+    if 'phone' in data:
+        val = (data['phone'] or '').strip() or None
+        if val and User.query.filter(User.phone == val, User.id != uid).first():
+            return jsonify(error='Phone already registered.'), 409
+        user.phone = val
+    if 'email' in data:
+        val = (data['email'] or '').strip() or None
+        if val and User.query.filter(User.email == val, User.id != uid).first():
+            return jsonify(error='Email already registered.'), 409
+        user.email = val
+    if 'preferred_courts' in data:
+        import json as _json
+        user.preferred_courts = _json.dumps(data['preferred_courts']) if data['preferred_courts'] else None
+    user.onboarding_complete = True
     db.session.commit()
     return jsonify(user=user.to_dict())
 

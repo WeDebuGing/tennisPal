@@ -7,7 +7,7 @@ export interface ProfileUpdate {
   email?: string;
   phone?: string;
   ntrp?: number | null;
-  preferred_courts?: string;
+  preferred_courts?: string[];
 }
 
 export function useUpdateProfile() {
