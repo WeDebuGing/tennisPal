@@ -66,6 +66,26 @@ export default function MatchDetail() {
         )}
       </div>
 
+      {match.opponent_contact && (match.opponent_contact.email || match.opponent_contact.phone) && (
+        <div className="bg-white rounded-xl shadow-sm p-5">
+          <h2 className="font-semibold text-gray-700 mb-3">📇 Contact Info</h2>
+          <div className="space-y-2">
+            {match.opponent_contact.phone && (
+              <a href={`tel:${match.opponent_contact.phone}`} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg text-green-700 font-medium active:bg-green-100 transition-colors">
+                <span className="text-lg">📱</span>
+                <span>{match.opponent_contact.phone}</span>
+              </a>
+            )}
+            {match.opponent_contact.email && (
+              <a href={`mailto:${match.opponent_contact.email}`} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg text-blue-700 font-medium active:bg-blue-100 transition-colors">
+                <span className="text-lg">✉️</span>
+                <span>{match.opponent_contact.email}</span>
+              </a>
+            )}
+          </div>
+        </div>
+      )}
+
       {canSubmitScore && (
         <ScoreSubmission match={match} onSubmit={handleStructuredSubmit} />
       )}

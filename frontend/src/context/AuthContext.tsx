@@ -6,6 +6,7 @@ interface AuthCtx {
   user: User | null; token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void; loading: boolean;
+  updateUser: (u: User) => void;
 }
 
 const AuthContext = createContext<AuthCtx>({} as AuthCtx);
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = (t: string, u: User) => { localStorage.setItem('token', t); setToken(t); setUser(u); };
   const logout = () => { localStorage.removeItem('token'); setToken(null); setUser(null); };
+  const updateUser = (u: User) => setUser(u);
 
-  return <AuthContext.Provider value={{ user, token, login, logout, loading }}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={{ user, token, login, logout, loading, updateUser }}>{children}</AuthContext.Provider>;
 }
