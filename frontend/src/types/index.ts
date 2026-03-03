@@ -5,6 +5,7 @@ export interface User {
   unique_opponents?: number; reliability?: number;
   availabilities?: Availability[]; created_at?: string;
   onboarding_complete?: boolean;
+  email_verified?: boolean;
   preferred_courts?: string[];
 }
 

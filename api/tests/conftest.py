@@ -27,12 +27,20 @@ def client(app):
     return app.test_client()
 
 
-def register_user(client, name, email, password='pass1234', ntrp=4.0):
+def register_user(client, name, email, password='pass1234', ntrp=4.0, verified=True):
     resp = client.post('/api/auth/register', json={
         'name': name, 'email': email, 'password': password, 'ntrp': ntrp,
     })
     data = resp.get_json()
-    return data.get('token'), data.get('user', {}).get('id')
+    uid = data.get('user', {}).get('id')
+    # Auto-verify by default so existing tests aren't affected
+    if verified and uid:
+        from models import User, db as _db
+        user = _db.session.get(User, uid)
+        if user:
+            user.email_verified = True
+            _db.session.commit()
+    return data.get('token'), uid
 
 
 def auth_header(token):

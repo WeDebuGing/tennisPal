@@ -25,6 +25,9 @@ import Settings from './pages/Settings';
 import Matchmaking from './pages/Matchmaking';
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
+import VerifyEmail from './pages/VerifyEmail';
+import CheckEmail from './pages/CheckEmail';
+import EmailVerificationBanner from './components/EmailVerificationBanner';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -33,6 +36,15 @@ function AppRoutes() {
       <Spinner text="Starting TennisPal…" />
     </div>
   );
+
+  if (user && !user.email_verified) {
+    return (
+      <Routes>
+        <Route path="/verify" element={<VerifyEmail />} />
+        <Route path="*" element={<CheckEmail />} />
+      </Routes>
+    );
+  }
 
   if (user && !user.onboarding_complete) {
     return (
@@ -48,6 +60,7 @@ function AppRoutes() {
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/verify" element={<VerifyEmail />} />
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
@@ -60,8 +73,10 @@ function AppRoutes() {
         <span className="font-bold text-green-700 text-lg tracking-tight">🎾 TennisPal</span>
         <CitySelector />
       </header>
+      <EmailVerificationBanner />
       <main className="pb-20">
         <Routes>
+          <Route path="/verify" element={<VerifyEmail />} />
           <Route path="/" element={<Home />} />
           <Route path="/players" element={<Players />} />
           <Route path="/players/:id" element={<PlayerProfile />} />
