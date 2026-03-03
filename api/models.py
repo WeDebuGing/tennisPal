@@ -20,6 +20,9 @@ class User(db.Model):
     is_admin = db.Column(db.Boolean, default=False)
     is_banned = db.Column(db.Boolean, default=False)
     onboarding_complete = db.Column(db.Boolean, default=False)
+    email_verified = db.Column(db.Boolean, default=False)
+    verification_token = db.Column(db.String(100), nullable=True)
+    verification_sent_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     availabilities = db.relationship('Availability', backref='user', lazy=True, cascade='all,delete-orphan')
@@ -59,7 +62,7 @@ class User(db.Model):
         return round(played / total * 100)
 
     def to_dict(self, brief=False):
-        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo, 'onboarding_complete': self.onboarding_complete}
+        d = {'id': self.id, 'name': self.name, 'ntrp': self.ntrp, 'elo': self.elo, 'onboarding_complete': self.onboarding_complete, 'email_verified': self.email_verified}
         if not brief:
             d.update({
                 'email': self.email, 'phone': self.phone,
