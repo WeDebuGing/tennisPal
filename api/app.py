@@ -4,6 +4,7 @@ from flask_jwt_extended import JWTManager, create_access_token, jwt_required, ge
 from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court, ReviewTag, PlayerReview
 from notifications import notify_user
+from password_reset import password_reset_bp
 from datetime import datetime, date, timedelta
 import os
 import json

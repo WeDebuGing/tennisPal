@@ -27,6 +27,7 @@ export default function Login() {
         <input className="w-full border rounded-lg p-3" placeholder="Email or Phone" value={identifier} onChange={e => setIdentifier(e.target.value)} />
         <input className="w-full border rounded-lg p-3" type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
         <button className="w-full bg-green-600 text-white rounded-lg p-3 font-semibold hover:bg-green-700">Log In</button>
+        <p className="text-right"><Link to="/forgot-password" className="text-sm text-green-600 hover:underline">Forgot password?</Link></p>
         <p className="text-center text-sm text-gray-500">Don't have an account? <Link to="/register" className="text-green-600 font-semibold">Register</Link></p>
       </form>
     </div>
