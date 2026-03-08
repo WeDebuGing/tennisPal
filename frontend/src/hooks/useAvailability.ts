@@ -9,6 +9,14 @@ export function useAvailability() {
   });
 }
 
+export function usePlayerAvailability(userId: string | number | undefined) {
+  return useQuery<Availability[]>({
+    queryKey: ['availability', userId],
+    queryFn: () => api.get(`/availability?user_id=${userId}`).then(r => r.data.slots),
+    enabled: !!userId,
+  });
+}
+
 export function useAddAvailability() {
   const qc = useQueryClient();
   return useMutation({

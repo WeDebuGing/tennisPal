@@ -470,8 +470,15 @@ def get_h2h(user_id):
 @app.route('/api/availability')
 @jwt_required()
 def get_availability():
-    uid = int(get_jwt_identity())
-    slots = Availability.query.filter_by(user_id=uid).order_by(Availability.day_of_week).all()
+    target_uid = request.args.get('user_id')
+    if target_uid:
+        try:
+            target_uid = int(target_uid)
+        except (ValueError, TypeError):
+            return jsonify(error='Invalid user_id.'), 400
+    else:
+        target_uid = int(get_jwt_identity())
+    slots = Availability.query.filter_by(user_id=target_uid).order_by(Availability.day_of_week).all()
     return jsonify(slots=[s.to_dict() for s in slots])
 
 
