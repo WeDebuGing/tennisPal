@@ -1,17 +1,22 @@
 import { useParams, Link } from 'react-router-dom';
 import { usePlayer, useH2H } from '../hooks/usePlayers';
+import { usePlayerAvailability } from '../hooks/useAvailability';
 import { useAuth } from '../context/AuthContext';
 import { Spinner, ErrorBox } from '../components/ui';
 import ProfileTags from '../components/ProfileTags';
 import PlayerBadges from '../components/PlayerBadges';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const HOURS = Array.from({ length: 17 }, (_, i) => i + 6);
+function timeToHour(t: string): number { const [h, m] = t.split(':').map(Number); return h + m / 60; }
+function formatHour(h: number): string { const s = h >= 12 ? 'p' : 'a'; const d = h > 12 ? h - 12 : h === 0 ? 12 : h; return `${d}${s}`; }
 
 export default function PlayerProfile() {
   const { id } = useParams();
   const { user: me } = useAuth();
   const { data: player, isLoading, error, refetch } = usePlayer(id);
   const { data: h2h } = useH2H(id, me?.id);
+  const { data: availSlots } = usePlayerAvailability(id);
 
   if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
   if (error || !player) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error ? 'Failed to load player' : 'Player not found'} onRetry={refetch} /></div>;
@@ -46,16 +51,43 @@ export default function PlayerProfile() {
 
       <ProfileTags userId={player.id} />
 
-      {player.availabilities && player.availabilities.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm p-4">
-          <h2 className="font-semibold text-gray-700 mb-2">Weekly Availability</h2>
-          <div className="flex flex-wrap gap-2">
-            {player.availabilities.map(a => (
-              <span key={a.id} className="text-xs bg-green-50 text-green-700 px-3 py-1.5 rounded-full">{DAYS[a.day_of_week]} {a.start_time}–{a.end_time}</span>
-            ))}
+      {(() => {
+        const avails = availSlots || player.availabilities || [];
+        if (!avails.length) return null;
+        const byDay: Record<number, typeof avails> = {};
+        for (const a of avails) { if (!byDay[a.day_of_week]) byDay[a.day_of_week] = []; byDay[a.day_of_week]!.push(a); }
+        const minH = HOURS[0], maxH = HOURS[HOURS.length - 1] + 1, total = maxH - minH;
+        return (
+          <div className="bg-white rounded-xl shadow-sm p-4">
+            <h2 className="font-semibold text-gray-700 mb-3">Weekly Availability</h2>
+            <div className="space-y-1">
+              <div className="flex items-center">
+                <div className="w-10 shrink-0" />
+                <div className="flex-1 flex justify-between text-[10px] text-gray-400 px-0.5">
+                  {HOURS.filter((_, i) => i % 2 === 0).map(h => <span key={h}>{formatHour(h)}</span>)}
+                </div>
+              </div>
+              {DAYS.map((day, idx) => (
+                <div key={idx} className="flex items-center">
+                  <div className="w-10 shrink-0 text-xs font-medium text-gray-500">{day}</div>
+                  <div className="flex-1 h-6 bg-gray-100 rounded relative">
+                    {(byDay[idx] || []).map(a => {
+                      const s = Math.max(timeToHour(a.start_time), minH);
+                      const e = Math.min(timeToHour(a.end_time), maxH);
+                      return (
+                        <div key={a.id} className="absolute top-0.5 bottom-0.5 bg-green-500 rounded" style={{ left: `${((s - minH) / total) * 100}%`, width: `${((e - s) / total) * 100}%` }}
+                          title={`${a.start_time}–${a.end_time}`}>
+                          <span className="text-[9px] text-white font-medium truncate px-1 leading-5">{a.start_time}–{a.end_time}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div className="bg-white rounded-xl shadow-sm p-4">
         <h2 className="font-semibold text-gray-700 mb-2">Match History</h2>
