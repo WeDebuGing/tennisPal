@@ -1137,6 +1137,105 @@ def get_user_tags(user_id):
     return jsonify(public_tags=public_tags, all_tags=all_tags)
 
 
+# ── Badges ──
+
+@app.route('/api/users/<int:user_id>/badges')
+def get_user_badges(user_id):
+    user = User.query.get_or_404(user_id)
+    badges = []
+
+    confirmed_matches = (
+        Match.query
+        .filter(Match.score_confirmed == True)
+        .filter((Match.player1_id == user_id) | (Match.player2_id == user_id))
+        .order_by(Match.play_date.asc(), Match.id.asc())
+        .all()
+    )
+    total = len(confirmed_matches)
+
+    # 1. Win Streak (3+ consecutive recent wins)
+    streak = 0
+    for m in reversed(confirmed_matches):
+        if m.winner_id == user_id:
+            streak += 1
+        else:
+            break
+    if streak >= 3:
+        badges.append({'id': 'win_streak', 'name': 'Win Streak', 'emoji': '🔥',
+                        'description': f'Currently on a {streak}-win streak'})
+
+    # 2. Comeback Player — won a match after losing the first set
+    for m in confirmed_matches:
+        if m.winner_id == user_id and m.sets:
+            try:
+                sets_data = json.loads(m.sets) if isinstance(m.sets, str) else m.sets
+                if sets_data and len(sets_data) >= 2:
+                    s1 = sets_data[0]
+                    is_p1 = m.player1_id == user_id
+                    my_s1 = s1.get('p1', 0) if is_p1 else s1.get('p2', 0)
+                    opp_s1 = s1.get('p2', 0) if is_p1 else s1.get('p1', 0)
+                    if opp_s1 > my_s1:
+                        badges.append({'id': 'comeback', 'name': 'Comeback Player', 'emoji': '💪',
+                                        'description': 'Won a match after losing the first set'})
+                        break
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+    # 3. Clutch — won 2+ tiebreaks
+    tiebreak_wins = 0
+    for m in confirmed_matches:
+        if m.sets:
+            try:
+                sets_data = json.loads(m.sets) if isinstance(m.sets, str) else m.sets
+                is_p1 = m.player1_id == user_id
+                for s in (sets_data or []):
+                    p1, p2 = s.get('p1', 0), s.get('p2', 0)
+                    my, opp = (p1, p2) if is_p1 else (p2, p1)
+                    if my == 7 and opp == 6:
+                        tiebreak_wins += 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+    if tiebreak_wins >= 2:
+        badges.append({'id': 'clutch', 'name': 'Clutch', 'emoji': '🎯',
+                        'description': f'Won {tiebreak_wins} tiebreaks'})
+
+    # 4. Active Player — 5+ matches
+    if total >= 5:
+        badges.append({'id': 'active', 'name': 'Active Player', 'emoji': '🏃',
+                        'description': f'{total} matches played'})
+
+    # 5. New to TennisPal — fewer than 3 matches
+    if total < 3:
+        badges.append({'id': 'newbie', 'name': 'New to TennisPal', 'emoji': '🆕',
+                        'description': 'Just getting started!'})
+
+    # 6. Rising — Elo 50+ above starting 1200
+    if user.elo and user.elo >= 1250:
+        badges.append({'id': 'rising', 'name': 'Rising', 'emoji': '📈',
+                        'description': f'Elo climbed to {user.elo}'})
+
+    # 7. Top 5 by Elo
+    top5_ids = [u.id for u in User.query.order_by(User.elo.desc()).limit(5).all()]
+    if user_id in top5_ids:
+        badges.append({'id': 'top5', 'name': 'Top 5', 'emoji': '🏆',
+                        'description': 'Ranked in the top 5 by Elo'})
+
+    # 8. Most-received review tag (3+)
+    reviews = PlayerReview.query.filter_by(reviewee_id=user_id).all()
+    tag_counts = {}
+    for r in reviews:
+        for t in r.tags:
+            tag_counts.setdefault(t.name, 0)
+            tag_counts[t.name] += 1
+    if tag_counts:
+        top_tag, top_count = max(tag_counts.items(), key=lambda x: x[1])
+        if top_count >= 3:
+            badges.append({'id': 'review_tag', 'name': top_tag, 'emoji': '⭐',
+                            'description': f'Recognized as "{top_tag}" by {top_count} players'})
+
+    return jsonify(badges=badges)
+
+
 # ── Settings ──
 
 @app.route('/api/settings', methods=['GET'])
