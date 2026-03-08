@@ -9,6 +9,7 @@ from datetime import datetime, date, timedelta
 import os
 import json
 import math
+from migrate_all import run_all as run_migrations
 
 # In release mode, serve the built frontend from frontend/dist
 RELEASE_MODE = os.environ.get('TENNISPAL_RELEASE', '').lower() in ('1', 'true', 'yes')
@@ -1480,12 +1481,8 @@ if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
 
 with app.app_context():
     db.create_all()
-    # Add preferred_courts column if missing (SQLite doesn't auto-add via create_all)
-    try:
-        db.session.execute(db.text("ALTER TABLE user ADD COLUMN preferred_courts VARCHAR(500)"))
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
+    run_migrations()
+    # Migrations handled by migrate_all.py
 
 if __name__ == '__main__':
     debug = not RELEASE_MODE
