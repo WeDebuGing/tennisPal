@@ -28,8 +28,9 @@ export default function Invite() {
       await sendInvite.mutateAsync({ ...form, court, to_user_id: id });
       toast('Invite sent! 🎾');
       nav(`/players/${id}`);
-    } catch {
-      toast('Failed to send invite', 'error');
+    } catch (err: any) {
+      const msg = err?.response?.data?.error || 'Failed to send invite';
+      toast(msg, 'error');
       setSubmitted(false);
     }
   };

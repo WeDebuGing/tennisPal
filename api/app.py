@@ -27,6 +27,7 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=30)
 db.init_app(app)
 CORS(app)
 jwt = JWTManager(app)
+app.register_blueprint(password_reset_bp)
 
 
 # ── Auth ──
@@ -508,9 +509,21 @@ def send_invite():
     to_user_id = int(data['to_user_id'])
     if uid == to_user_id:
         return jsonify(error="You cannot invite yourself."), 400
+    try:
+        play_date = datetime.strptime(data['play_date'], '%Y-%m-%d').date()
+    except (ValueError, KeyError):
+        return jsonify(error='Invalid or missing play_date. Use YYYY-MM-DD.'), 400
+    if play_date < date.today():
+        return jsonify(error='Cannot send an invite for a past date.'), 400
+    # Check for existing pending invite from this user to the same player on the same date
+    existing = MatchInvite.query.filter_by(
+        from_user_id=uid, to_user_id=to_user_id, status='pending'
+    ).filter(MatchInvite.play_date == play_date).first()
+    if existing:
+        return jsonify(error='You already have a pending invite to this player for this date.'), 409
     inv = MatchInvite(
         from_user_id=uid, to_user_id=to_user_id,
-        play_date=datetime.strptime(data['play_date'], '%Y-%m-%d').date(),
+        play_date=play_date,
         start_time=data['start_time'], end_time=data['end_time'],
         court=data.get('court', 'TBD'), match_type=data.get('match_type', 'singles'),
     )
