@@ -53,8 +53,15 @@ def register():
 
     if not name or not password:
         return jsonify(error='Name and password required.'), 400
+    if len(password) < 8:
+        return jsonify(error='Password must be at least 8 characters.'), 400
     if not email and not phone:
         return jsonify(error='Provide email or phone.'), 400
+    import re
+    if email and not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        return jsonify(error='Invalid email format.'), 400
+    if phone and not re.match(r'^\+?[\d\s\-\(\)]{7,15}$', phone):
+        return jsonify(error='Invalid phone number format.'), 400
     if email and User.query.filter_by(email=email).first():
         return jsonify(error='Email already registered.'), 409
     if phone and User.query.filter_by(phone=phone).first():
