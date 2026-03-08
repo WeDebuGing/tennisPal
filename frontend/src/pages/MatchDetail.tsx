@@ -23,7 +23,8 @@ export default function MatchDetail() {
   if (isLoading) return <div className="p-4 pb-24 max-w-lg mx-auto"><Spinner /></div>;
   if (error || !match) return <div className="p-4 pb-24 max-w-lg mx-auto"><ErrorBox message={error ? 'Failed to load match' : 'Match not found'} onRetry={refetch} /></div>;
 
-  const canSubmitScore = match.status === 'scheduled' && user && (user.id === match.player1.id || user.id === match.player2.id);
+  const matchDatePassed = match.play_date ? new Date(match.play_date + 'T23:59:59') <= new Date() : false;
+  const canSubmitScore = match.status === 'scheduled' && matchDatePassed && user && (user.id === match.player1.id || user.id === match.player2.id);
   const canConfirm = match.status === 'completed' && !match.score_confirmed && !match.score_disputed && user && match.score_submitted_by !== user.id;
 
   const handleStructuredSubmit = async (sets: SetScore[], matchFormat: string) => {
@@ -83,6 +84,13 @@ export default function MatchDetail() {
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {match.status === 'scheduled' && !matchDatePassed && user && (user.id === match.player1.id || user.id === match.player2.id) && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+          <p className="text-yellow-700 font-medium">⏳ Match not yet played</p>
+          <p className="text-sm text-yellow-600 mt-1">Score submission will be available after the match date.</p>
         </div>
       )}
 
