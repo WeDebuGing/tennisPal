@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useMatches, useRecentResults, useRespondInvite } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/Toast';
@@ -12,12 +12,20 @@ export default function Matches() {
   const { data: recentResults, isLoading: recentLoading } = useRecentResults();
   const respondMutation = useRespondInvite();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const hasPending = (myData?.pending_invites?.length ?? 0) > 0;
   const [showInvites, setShowInvites] = useState(hasPending);
 
   const handleRespond = (id: number, action: 'accept' | 'decline') => {
     respondMutation.mutate({ id, action }, {
-      onSuccess: () => toast(action === 'accept' ? 'Invite accepted! Match on 🎾' : 'Invite declined'),
+      onSuccess: (data) => {
+        if (action === 'accept' && data?.data?.match?.id) {
+          toast('Invite accepted! Match on 🎾');
+          navigate(`/matches/${data.data.match.id}`);
+        } else {
+          toast(action === 'accept' ? 'Invite accepted! Match on 🎾' : 'Invite declined');
+        }
+      },
       onError: () => toast('Failed to respond to invite', 'error'),
     });
   };

@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Spinner, ErrorBox } from '../components/ui';
 import ProfileTags from '../components/ProfileTags';
 import PlayerBadges from '../components/PlayerBadges';
+import { buildSmsUri } from '../utils/sms';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6);
@@ -36,7 +37,15 @@ export default function PlayerProfile() {
           <div className="bg-yellow-50 rounded-lg p-2"><div className="text-lg font-bold text-yellow-600">{player.reliability}%</div><div className="text-xs text-gray-500">Reliable</div></div>
         </div>
         {me && me.id !== player.id && (
-          <Link to={`/invite/${player.id}`} className="block mt-4 bg-green-600 text-white text-center rounded-lg py-3 font-semibold hover:bg-green-700 active:bg-green-800 transition-colors">Invite to Play 🎾</Link>
+          <>
+            <Link to={`/invite/${player.id}`} className="block mt-4 bg-green-600 text-white text-center rounded-lg py-3 font-semibold hover:bg-green-700 active:bg-green-800 transition-colors">Invite to Play 🎾</Link>
+            {player.phone && (
+              <a href={buildSmsUri(player.phone, `Hey ${player.name}, found you on TennisPal! Want to hit sometime? 🎾`)}
+                className="block mt-2 bg-green-100 text-green-700 text-center rounded-lg py-3 font-semibold hover:bg-green-200 active:bg-green-300 transition-colors">
+                📱 Text Player
+              </a>
+            )}
+          </>
         )}
       </div>
 
