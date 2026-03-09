@@ -670,7 +670,7 @@ def get_match(match_id):
     data = match.to_dict()
     # Include contact info only for confirmed match participants
     is_participant = uid in (match.player1_id, match.player2_id)
-    if is_participant and match.status == 'completed' and match.score_confirmed:
+    if is_participant and match.status in ('scheduled', 'completed'):
         opponent = match.player2 if match.player1_id == uid else match.player1
         data['opponent_contact'] = {
             'email': opponent.email,

@@ -8,6 +8,7 @@ import ReviewModal from '../components/ReviewModal';
 import { Spinner, ErrorBox } from '../components/ui';
 import { SetScore } from '../types';
 import { useReviewStatus } from '../hooks/useReviews';
+import { buildSmsUri } from '../utils/sms';
 
 export default function MatchDetail() {
   const { id } = useParams();
@@ -72,10 +73,22 @@ export default function MatchDetail() {
           <h2 className="font-semibold text-gray-700 mb-3">📇 Contact Info</h2>
           <div className="space-y-2">
             {match.opponent_contact.phone && (
-              <a href={`tel:${match.opponent_contact.phone}`} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg text-green-700 font-medium active:bg-green-100 transition-colors">
-                <span className="text-lg">📱</span>
-                <span>{match.opponent_contact.phone}</span>
-              </a>
+              <>
+                <a href={`tel:${match.opponent_contact.phone}`} className="flex items-center gap-3 p-3 bg-green-50 rounded-lg text-green-700 font-medium active:bg-green-100 transition-colors">
+                  <span className="text-lg">📱</span>
+                  <span>{match.opponent_contact.phone}</span>
+                </a>
+                {(() => {
+                  const opponentName = user?.id === match.player1.id ? match.player2.name : match.player1.name;
+                  const body = `Hey ${opponentName}! Ready for our tennis match on ${match.play_date}. See you there! 🎾`;
+                  return (
+                    <a href={buildSmsUri(match.opponent_contact.phone!, body)}
+                      className="flex items-center justify-center gap-2 p-3 bg-green-600 text-white rounded-lg font-semibold active:bg-green-800 transition-colors">
+                      <span>📱</span> Text Opponent
+                    </a>
+                  );
+                })()}
+              </>
             )}
             {match.opponent_contact.email && (
               <a href={`mailto:${match.opponent_contact.email}`} className="flex items-center gap-3 p-3 bg-blue-50 rounded-lg text-blue-700 font-medium active:bg-blue-100 transition-colors">
