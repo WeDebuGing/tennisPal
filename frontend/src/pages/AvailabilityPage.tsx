@@ -31,7 +31,7 @@ export default function AvailabilityPage() {
     e.preventDefault();
     addMutation.mutate(form, {
       onSuccess: () => toast('Availability added'),
-      onError: () => toast('Failed to add slot', 'error'),
+      onError: (err: any) => toast(err?.response?.data?.error || 'Failed to add slot', 'error'),
     });
   };
 

@@ -496,6 +496,13 @@ def add_availability():
         return jsonify(error='day_of_week must be between 0 (Monday) and 6 (Sunday).'), 400
     if not data.get('start_time') or not data.get('end_time'):
         return jsonify(error='start_time and end_time are required.'), 400
+    # Prevent duplicate / overlapping slots
+    existing = Availability.query.filter_by(
+        user_id=uid, day_of_week=dow,
+        start_time=data['start_time'], end_time=data['end_time']
+    ).first()
+    if existing:
+        return jsonify(error='You already have this exact availability slot.'), 409
     a = Availability(user_id=uid, day_of_week=dow,
                      start_time=data['start_time'], end_time=data['end_time'])
     db.session.add(a)
