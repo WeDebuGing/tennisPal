@@ -5,6 +5,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court, ReviewTag, PlayerReview
 from notifications import notify_user
 from password_reset import password_reset_bp
+from email_verification import (
+    generate_verification_token, send_verification_email,
+    check_rate_limit, record_send, is_token_expired, email_verified_required,
+)
 from datetime import datetime, date, timedelta
 import os
 import json
@@ -71,10 +75,28 @@ def register():
     city = data.get('city', 'Pittsburgh')
     user = User(name=name, email=email, phone=phone,
                 password_hash=generate_password_hash(password), ntrp=ntrp, city=city)
+
+    # Email verification setup
+    if email:
+        v_token = generate_verification_token()
+        user.verification_token = v_token
+        user.verification_sent_at = datetime.utcnow()
+        user.email_verified = False
+    else:
+        # No email provided — treat as verified (phone-only users)
+        user.email_verified = True
+
     db.session.add(user)
     db.session.commit()
+
+    # Send verification email (after commit so user exists)
+    if email:
+        ip = request.remote_addr or '0.0.0.0'
+        record_send(ip, email)
+        send_verification_email(email, v_token)
+
     token = create_access_token(identity=str(user.id))
-    return jsonify(token=token, user=user.to_dict()), 201
+    return jsonify(token=token, user=user.to_dict(), email_verification_sent=bool(email)), 201
 
 
 @app.route('/api/auth/login', methods=['POST'])
@@ -98,6 +120,49 @@ def me():
     if not user:
         return jsonify(error='User not found.'), 404
     return jsonify(user=user.to_dict())
+
+
+@app.route('/api/auth/verify-email', methods=['POST'])
+def verify_email():
+    data = request.get_json() or {}
+    token = data.get('token', '').strip()
+    if not token:
+        return jsonify(error='Token is required.'), 400
+    user = User.query.filter_by(verification_token=token).first()
+    if not user:
+        return jsonify(error='Invalid or expired verification token.'), 400
+    if user.email_verified:
+        return jsonify(message='Email already verified.', user=user.to_dict())
+    if is_token_expired(user.verification_sent_at):
+        return jsonify(error='Verification token has expired. Please request a new one.'), 400
+    user.email_verified = True
+    user.verification_token = None
+    db.session.commit()
+    return jsonify(message='Email verified successfully!', user=user.to_dict())
+
+
+@app.route('/api/auth/resend-verification', methods=['POST'])
+@jwt_required()
+def resend_verification():
+    uid = int(get_jwt_identity())
+    user = User.query.get(uid)
+    if not user:
+        return jsonify(error='User not found.'), 404
+    if user.email_verified:
+        return jsonify(error='Email is already verified.'), 400
+    if not user.email:
+        return jsonify(error='No email address on file.'), 400
+    ip = request.remote_addr or '0.0.0.0'
+    rate_error = check_rate_limit(ip, user.email)
+    if rate_error:
+        return jsonify(error=rate_error), 429
+    v_token = generate_verification_token()
+    user.verification_token = v_token
+    user.verification_sent_at = datetime.utcnow()
+    db.session.commit()
+    record_send(ip, user.email)
+    send_verification_email(user.email, v_token)
+    return jsonify(message='Verification email sent.')
 
 
 # ── Profile ──
@@ -297,6 +362,7 @@ def get_posts():
 
 @app.route('/api/posts', methods=['POST'])
 @jwt_required()
+@email_verified_required
 def create_post():
     uid = int(get_jwt_identity())
     data = request.get_json() or {}
@@ -373,6 +439,7 @@ def delete_post(post_id):
 
 @app.route('/api/posts/<int:post_id>/claim', methods=['POST'])
 @jwt_required()
+@email_verified_required
 def claim_post(post_id):
     uid = int(get_jwt_identity())
     post = LookingToPlay.query.get_or_404(post_id)

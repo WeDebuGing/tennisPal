@@ -7,6 +7,7 @@ MIGRATION_MODULES = [
     'migrate_add_columns',
     'migrate_match_post_id',
     'migrate_password_reset',
+    'migrate_email_verification',
 ]
 
 def run_all():
