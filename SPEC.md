@@ -25,6 +25,7 @@
 17. [Settings](#17-settings)
 18. [Admin Dashboard](#18-admin-dashboard)
 19. [Known Limitations / TODO](#19-known-limitations--todo)
+20. [League / Season Mode](#20-league--season-mode)
 
 ---
 
@@ -669,12 +670,263 @@ total_users, banned_users, total_matches, completed_matches, scheduled_matches, 
 4. **SQLite** — Single-file DB; not suitable for high concurrency. Migration to PostgreSQL recommended for production.
 5. **No real-time updates** — Polling-based; no WebSocket/SSE for live notifications.
 6. **No email verification** — Emails accepted without confirmation.
-7. **City is cosmetic** — City field exists but doesn't filter data (all users see all data).
-8. **No doubles support** — match_type field exists but UI and logic are singles-only.
-9. **No match time storage** — Matches track play_date but not specific time.
-10. **No dispute resolution** — Disputed scores have no workflow; admin must intervene manually.
-11. **Reliability stat counts no_show** — but no_show status is never set by any endpoint.
-12. **Tiebreak display** — Shows minimum tiebreak score in parentheses (e.g., "7-6(5)") rather than winner's score.
-13. **No rate limiting** — API has no request throttling.
-14. **preferred_courts inconsistency** — Stored as JSON array via onboarding but as raw text via profile edit. Profile edit sends string; comparison logic splits on commas.
-15. **No pagination on feed** — All active posts loaded at once.
+7. **No doubles support** — match_type field exists but UI and logic are singles-only.
+8. **No match time storage** — Matches track play_date but not specific time.
+9. **No dispute resolution** — Disputed scores have no workflow; admin must intervene manually.
+10. **Reliability stat counts no_show** — but no_show status is never set by any endpoint.
+11. **Tiebreak display** — Shows minimum tiebreak score in parentheses (e.g., "7-6(5)") rather than winner's score.
+12. **No rate limiting** — API has no request throttling.
+13. **preferred_courts inconsistency** — Stored as JSON array via onboarding but as raw text via profile edit. Profile edit sends string; comparison logic splits on commas.
+14. **No pagination on feed** — All active posts loaded at once.
+15. **League Elo vs Global Elo** — League-scoped Elo is tracked separately on `LeagueMembership`; no option yet to use league results to update global Elo.
+16. **No league invitation links** — Joining requires knowing the league slug or being approved; no shareable invite URL yet.
+17. **No round-robin schedule generator** — Round robin format tracks standings but does not auto-generate a fixture schedule; organizers assign matchups manually or players self-schedule.
+18. **No league chat/messaging** — No in-league communication channel; players rely on external messaging.
+19. **No playoff/bracket mode** — League formats cover ladder, round robin, and flex; single/double elimination brackets are not yet supported.
+
+---
+
+## 20. League / Season Mode
+
+Organized league play supporting multiple formats (ladder, round robin, flex league) with season-based standings, organizer tools, and integration with existing match and Elo systems.
+
+### 20.1 Overview
+
+Leagues allow organizers to run structured competitive seasons on TennisPal. Key use cases:
+- **Schenley Ladder** (~100 players): Elo-based ladder with challenge system
+- **GTN League** (~30 players): Flexible league for 3.5/4.0+ players tracking match results over a season
+
+A league has **one season at a time**, represented as attributes on the League itself (season_name, start_date, end_date, status). Starting a "new season" = updating those fields and resetting league Elo. There is no separate Season table.
+
+### 20.2 Data Models
+
+#### `League` (new table)
+| Field | Type | Notes |
+|-------|------|-------|
+| id | Integer PK | Auto-increment |
+| name | String(100) | Required, unique |
+| slug | String(100) | URL-friendly, unique, auto-generated from name |
+| format | String(20) | `ladder`, `round_robin`, `flex` |
+| city | String(100) | Default: "Pittsburgh" |
+| ntrp_min | Float | Optional — minimum NTRP to join |
+| ntrp_max | Float | Optional — maximum NTRP to join |
+| join_mode | String(20) | `open`, `approval`, `invite_only`. Default: `open` |
+| season_name | String(100) | e.g., "Spring 2026". Nullable (no season yet) |
+| start_date | Date | Current season start. Nullable |
+| end_date | Date | Current season end. Nullable |
+| status | String(20) | `upcoming`, `active`, `completed`, or null (no season) |
+| min_matches | Integer | Minimum matches to qualify for standings. Default: 3 |
+| is_active | Boolean | Default: True |
+| created_by_id | FK→User | League creator (auto-organizer) |
+| created_at | DateTime | |
+
+**Business Rules:**
+- `status` transitions: `upcoming` → `active` → `completed` (organizer-triggered via PUT)
+- `end_date` must be after `start_date` when both are set
+- Setting status to `active` resets all member `league_elo` to 1200
+- Setting status to `completed` freezes standings; no new league matches accepted
+- To start a new season: set new season_name, start_date, end_date, status=`upcoming`
+
+#### `LeagueMembership` (new join table)
+| Field | Type | Notes |
+|-------|------|-------|
+| id | Integer PK | Auto-increment |
+| league_id | FK→League | |
+| user_id | FK→User | |
+| role | String(20) | `member`, `organizer` |
+| league_elo | Integer | Default: 1200, league-scoped rating |
+| joined_at | DateTime | |
+
+**Unique constraint:** (league_id, user_id)
+
+**Business Rules:**
+- League creator automatically gets `organizer` role
+- `league_elo` is independent of global Elo — only updated by league matches
+- Wins, losses, match count, points, and win% are **computed from the Match table** on the fly (not stored)
+- When a new season is activated, all member `league_elo` values reset to 1200
+
+#### `Match` (existing table — add fields)
+| Field | Type | Notes |
+|-------|------|-------|
+| league_id | FK→League, nullable | If set, this is a league match |
+| is_challenge | Boolean | Default: False. For ladder challenge matches |
+| elo_change_p1 | Integer, nullable | Stored after confirmation |
+| elo_change_p2 | Integer, nullable | Stored after confirmation |
+
+**Business Rules:**
+- A match with `league_id` set is a league match; without is a casual match
+- Both players must be active members of the league
+- Match `play_date` must fall within the league's active season date range
+- League Elo updates happen when the match is confirmed (`score_confirmed=True`)
+- A match can belong to at most one league
+
+### 20.3 League Formats
+
+#### Ladder
+- Players ranked by `league_elo` descending
+- Any member can **challenge** another member (creates a match with `is_challenge=True`)
+- Challenge rules: can challenge anyone ranked up to **10 positions above** you
+- Standings: ordered by `league_elo` desc
+
+#### Round Robin
+- All members play each other (or as many as possible within the season)
+- Standings: ordered by win percentage, then head-to-head, then total wins
+- `min_matches` threshold applies — players below it shown but marked "unqualified"
+
+#### Flex League
+- No fixed schedule or matchup requirements
+- Players play whoever they want, whenever they want within the season
+- Standings: ordered by total points (win = 3pts, loss = 1pt for participating) then win %, then total matches
+- Encourages maximum participation — you get points just for playing
+
+### 20.4 Elo Calculation (League-Scoped)
+
+Applied to `LeagueMembership.league_elo` when a league match is confirmed:
+
+```
+Expected = 1 / (1 + 10^((opponent_elo - player_elo) / 400))
+New Elo = Old Elo + K * (Result - Expected)
+```
+
+- **K-factor:** 32
+- **Result:** 1 for win, 0 for loss
+- Elo changes stored on `Match.elo_change_p1` / `elo_change_p2` for display ("+15", "-15")
+- Does NOT affect global `User.elo`
+
+### 20.5 API Endpoints
+
+#### League CRUD (includes season management)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `POST /api/leagues` | POST | User | Create league (creator becomes organizer) |
+| `GET /api/leagues` | GET | None | List active leagues; optional filters: `city`, `format`, `ntrp` |
+| `GET /api/leagues/<slug>` | GET | None | League detail with season info & member count |
+| `PUT /api/leagues/<slug>` | PUT | Organizer | Update league settings **and/or season** (name, dates, status) |
+| `DELETE /api/leagues/<slug>` | DELETE | Organizer | Soft-delete (set `is_active=False`) |
+
+**Create League (`POST /api/leagues`):**
+- Required: name, format
+- Optional: ntrp_min, ntrp_max, join_mode (default: `open`), city, season_name, start_date, end_date
+- Name must be unique → 409
+- format must be one of: `ladder`, `round_robin`, `flex` → 400
+- Creator auto-added as organizer member
+
+**Update League (`PUT /api/leagues/<slug>`):**
+- Can update any league field including season fields
+- To activate a season: `{ "status": "active" }` — resets all member Elo to 1200
+- To complete a season: `{ "status": "completed" }` — freezes standings
+- To start a new season: `{ "season_name": "Fall 2026", "start_date": "...", "end_date": "...", "status": "upcoming" }`
+- Cannot go backwards in status (e.g., `completed` → `active`) → 400
+- end_date must be after start_date → 400
+
+#### Membership
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `POST /api/leagues/<slug>/join` | POST | User | Join league (or request to join) |
+| `POST /api/leagues/<slug>/leave` | POST | User | Leave league |
+| `GET /api/leagues/<slug>/members` | GET | None | List members with league Elo |
+| `POST /api/leagues/<slug>/members/<user_id>/approve` | POST | Organizer | Approve pending member |
+| `POST /api/leagues/<slug>/members/<user_id>/remove` | POST | Organizer | Remove member |
+| `POST /api/leagues/<slug>/members/<user_id>/promote` | POST | Organizer | Promote to organizer |
+
+**Join League:**
+- If `join_mode=open`: added immediately
+- If `join_mode=approval`: added with pending status (tracked via a `pending` value — extend role or add a status field as needed); organizer notified
+- If `join_mode=invite_only`: → 403 "This league is invite-only"
+- NTRP check: if league has ntrp_min/max, user's NTRP must be in range → 400
+- Already a member → 409
+- Sets initial `league_elo=1200`
+
+**Leave League:**
+- Removes membership record (or soft-deletes)
+- Organizers cannot leave if they are the last organizer → 400
+
+#### Standings
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `GET /api/leagues/<slug>/standings` | GET | None | Current season standings (computed from matches) |
+
+**Standings Response:**
+Returns ranked list of members with: rank, user (id, name, ntrp), league_elo, wins, losses, matches_played, win_pct, qualified (meets min_matches), points (flex format only)
+
+All stats are **computed at query time** by aggregating Match records where `league_id` matches and `play_date` falls within the current season's date range.
+
+**Ranking Logic (by format):**
+- **Ladder:** `league_elo` desc
+- **Round Robin:** `win_pct` desc → head-to-head → wins desc
+- **Flex:** `points` desc → `win_pct` desc → `matches_played` desc
+
+#### League Matches
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `GET /api/leagues/<slug>/matches` | GET | None | List matches for current season |
+| `POST /api/leagues/<slug>/challenge/<user_id>` | POST | Member | Challenge a player (ladder only) |
+
+**League match creation:** When creating a regular match (`POST /api/matches`), include optional `league_id` in the payload. If set, the match is validated as a league match (both players must be members, season must be active, play_date in range). League Elo is updated when the match is confirmed.
+
+**Challenge (`POST /api/leagues/<slug>/challenge/<user_id>`):**
+- Ladder format only → 400 if not ladder
+- Creates a MatchInvite to the challenged player (reuses existing invite system)
+- Validates rank difference ≤ 10 positions → 400 "Can only challenge players up to 10 ranks above you"
+- Cannot challenge yourself → 400
+
+### 20.6 Integration with Existing Features
+
+| Feature | Integration |
+|---------|------------|
+| **Matches (§7–8)** | League matches are standard Match records with `league_id` set. All scoring, confirmation, and dispute flows unchanged. |
+| **Elo (§9)** | League Elo is separate from global Elo. Stored on LeagueMembership, updated via K=32 formula on match confirmation. Global Elo remains a TODO. |
+| **Notifications (§14)** | New triggers: join request (→ organizer), membership approved (→ member), challenge received (→ challenged player), season activated (→ all members), season completed (→ all members). |
+| **Leaderboard (§11)** | Global leaderboard unchanged. League standings are a separate endpoint per league. |
+| **Player Profile (§10)** | Add `leagues` array to player response showing active league memberships. |
+
+### 20.7 Notification Triggers (League-Specific)
+
+| Event | Recipient | Message |
+|-------|-----------|---------|
+| Join request | League organizer(s) | "{name} requested to join {league}." |
+| Membership approved | Member | "You've been approved to join {league}!" |
+| Membership removed | Member | "You've been removed from {league}." |
+| Challenge received | Challenged player | "{name} challenged you in {league}! 🎾" |
+| Season activated | All league members | "{league}: {season_name} has started! Get playing." |
+| Season completed | All league members | "{league}: {season_name} is complete. Check final standings!" |
+| League match confirmed | Both players | "Your match was recorded in {league}. {winner} +{elo_change} Elo." |
+
+### 20.8 Frontend Views
+
+1. **League Browse** (`/leagues`) — list of active leagues with format badges, member counts, NTRP range
+2. **League Detail** (`/leagues/:slug`) — current season standings, recent matches, join button
+3. **League Standings** — table with rank, player, Elo, W-L, win%, qualified badge
+4. **League Management** (organizer) — edit settings, manage members (approve/remove/promote), update season
+5. **My Leagues** (in profile) — list of leagues user belongs to with quick links
+6. **Challenge Flow** (ladder) — button on standings to challenge a player; creates invite with league context
+
+### 20.9 Acceptance Criteria
+
+- [ ] Create league with valid data → 201, creator is organizer
+- [ ] Create league with duplicate name → 409
+- [ ] Create league with invalid format → 400
+- [ ] Join open league → membership active immediately
+- [ ] Join approval league → membership pending, organizer notified
+- [ ] Join invite-only league → 403
+- [ ] Join league with NTRP outside range → 400
+- [ ] Already a member → 409 on join
+- [ ] PUT league status to `active` → resets all member league_elo to 1200
+- [ ] PUT league status to `completed` → no new league matches accepted
+- [ ] Cannot set status backwards (completed → active) → 400
+- [ ] Create match with league_id where player is not a member → 400
+- [ ] Create match with league_id when season is not active → 400
+- [ ] Create match with play_date outside season range → 400
+- [ ] League Elo updates correctly on match confirmation (winner gains, loser loses)
+- [ ] Standings computed correctly from Match table (no stale cached stats)
+- [ ] Ladder challenge beyond 10 ranks → 400
+- [ ] Challenge in non-ladder league → 400
+- [ ] Standings reflect correct ranking per format
+- [ ] Flex format awards 3pts for win, 1pt for loss
+- [ ] Last organizer cannot leave → 400
+- [ ] Non-organizer cannot update league → 403
+- [ ] League appears in player profile's leagues list
