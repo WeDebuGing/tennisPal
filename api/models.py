@@ -149,6 +149,8 @@ class MatchInvite(db.Model):
     end_time = db.Column(db.String(5), nullable=False)
     court = db.Column(db.String(100), default='TBD')
     match_type = db.Column(db.String(20), default='singles')
+    league_id = db.Column(db.Integer, db.ForeignKey('league.id'), nullable=True)
+    is_challenge = db.Column(db.Boolean, default=False)
     status = db.Column(db.String(20), default='pending')
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
@@ -157,7 +159,7 @@ class MatchInvite(db.Model):
     post = db.relationship('LookingToPlay', foreign_keys=[post_id])
 
     def to_dict(self):
-        return {
+        d = {
             'id': self.id,
             'from_user': {'id': self.from_user.id, 'name': self.from_user.name} if self.from_user else None,
             'to_user': {'id': self.to_user.id, 'name': self.to_user.name} if self.to_user else None,
@@ -167,6 +169,10 @@ class MatchInvite(db.Model):
             'court': self.court, 'match_type': self.match_type, 'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
+        if self.league_id:
+            d['league_id'] = self.league_id
+            d['is_challenge'] = self.is_challenge
+        return d
 
 
 class Match(db.Model):
@@ -184,13 +190,19 @@ class Match(db.Model):
     score_disputed = db.Column(db.Boolean, default=False)
     winner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # League fields
+    league_id = db.Column(db.Integer, db.ForeignKey('league.id'), nullable=True)
+    is_challenge = db.Column(db.Boolean, default=False)
+    elo_change_p1 = db.Column(db.Integer, nullable=True)
+    elo_change_p2 = db.Column(db.Integer, nullable=True)
 
     player1 = db.relationship('User', foreign_keys=[player1_id])
     player2 = db.relationship('User', foreign_keys=[player2_id])
     winner = db.relationship('User', foreign_keys=[winner_id])
+    league = db.relationship('League', backref='matches')
 
     def to_dict(self):
-        return {
+        d = {
             'id': self.id,
             'player1': {'id': self.player1.id, 'name': self.player1.name} if self.player1 else None,
             'player2': {'id': self.player2.id, 'name': self.player2.name} if self.player2 else None,
@@ -202,6 +214,69 @@ class Match(db.Model):
             'winner_id': self.winner_id,
             'winner_name': self.winner.name if self.winner else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+        if self.league_id:
+            d['league_id'] = self.league_id
+            d['is_challenge'] = self.is_challenge
+            d['elo_change_p1'] = self.elo_change_p1
+            d['elo_change_p2'] = self.elo_change_p2
+        return d
+
+
+class League(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False, unique=True)
+    slug = db.Column(db.String(100), nullable=False, unique=True)
+    format = db.Column(db.String(20), nullable=False)  # ladder, round_robin, flex
+    city = db.Column(db.String(100), default='Pittsburgh')
+    ntrp_min = db.Column(db.Float, nullable=True)
+    ntrp_max = db.Column(db.Float, nullable=True)
+    join_mode = db.Column(db.String(20), default='open')  # open, approval, invite_only
+    season_name = db.Column(db.String(100), nullable=True)
+    start_date = db.Column(db.Date, nullable=True)
+    end_date = db.Column(db.Date, nullable=True)
+    status = db.Column(db.String(20), nullable=True)  # upcoming, active, completed
+    min_matches = db.Column(db.Integer, default=3)
+    is_active = db.Column(db.Boolean, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    creator = db.relationship('User', foreign_keys=[created_by_id])
+    memberships = db.relationship('LeagueMembership', backref='league', lazy=True, cascade='all,delete-orphan')
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'name': self.name, 'slug': self.slug, 'format': self.format,
+            'city': self.city, 'ntrp_min': self.ntrp_min, 'ntrp_max': self.ntrp_max,
+            'join_mode': self.join_mode, 'season_name': self.season_name,
+            'start_date': self.start_date.isoformat() if self.start_date else None,
+            'end_date': self.end_date.isoformat() if self.end_date else None,
+            'status': self.status, 'min_matches': self.min_matches, 'is_active': self.is_active,
+            'created_by_id': self.created_by_id,
+            'member_count': len([m for m in self.memberships if m.role != 'pending']),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class LeagueMembership(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    league_id = db.Column(db.Integer, db.ForeignKey('league.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    role = db.Column(db.String(20), default='member')  # member, organizer, pending
+    league_elo = db.Column(db.Integer, default=1200)
+    joined_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    user = db.relationship('User', backref='league_memberships')
+
+    __table_args__ = (db.UniqueConstraint('league_id', 'user_id', name='uq_league_user'),)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'league_id': self.league_id, 'user_id': self.user_id,
+            'role': self.role, 'league_elo': self.league_elo,
+            'user_name': self.user.name if self.user else None,
+            'user_ntrp': self.user.ntrp if self.user else None,
+            'joined_at': self.joined_at.isoformat() if self.joined_at else None,
         }
 
 

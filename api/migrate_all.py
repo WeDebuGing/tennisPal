@@ -8,6 +8,7 @@ MIGRATION_MODULES = [
     'migrate_match_post_id',
     'migrate_password_reset',
     'migrate_email_verification',
+    'migrate_league',
 ]
 
 def run_all():
