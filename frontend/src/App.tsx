@@ -25,6 +25,8 @@ import Settings from './pages/Settings';
 import Matchmaking from './pages/Matchmaking';
 import Landing from './pages/Landing';
 import Onboarding from './pages/Onboarding';
+import Leagues from './pages/Leagues';
+import LeagueDetail from './pages/LeagueDetail';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import VerifyEmail from './pages/VerifyEmail';
@@ -89,6 +91,8 @@ function AppRoutes() {
           <Route path="/matches/:id" element={<MatchDetail />} />
           <Route path="/invite/:id" element={<Invite />} />
           <Route path="/matchmaking" element={<Matchmaking />} />
+          <Route path="/leagues" element={<Leagues />} />
+          <Route path="/leagues/:slug" element={<LeagueDetail />} />
           <Route path="/courts" element={<Courts />} />
           <Route path="/leaderboard" element={<Leaderboard />} />
           <Route path="/availability" element={<AvailabilityPage />} />

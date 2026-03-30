@@ -66,3 +66,40 @@ export interface LeaderboardEntry {
   id: number; name: string; ntrp: number | null; elo: number;
   wins: number; losses: number; matches_played: number;
 }
+
+export interface League {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  city_id: number | null;
+  season: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  max_members: number | null;
+  require_approval: boolean;
+  is_active: boolean;
+  created_by: number;
+  member_count: number;
+  created_at: string;
+  user_role?: string | null; // 'admin' | 'member' | null (if not a member)
+}
+
+export interface LeagueMembership {
+  user_id: number;
+  user_name: string;
+  ntrp: number | null;
+  role: 'admin' | 'member';
+  status: 'approved' | 'pending';
+  joined_at: string;
+}
+
+export interface LeagueStanding {
+  user_id: number;
+  user_name: string;
+  ntrp: number | null;
+  wins: number;
+  losses: number;
+  matches_played: number;
+  rank: number;
+}
