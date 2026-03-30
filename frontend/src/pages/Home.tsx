@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import { usePosts, useRequestPost, useDeletePost, useUpdatePost, UpdatePostData, PostFilters } from '../hooks/usePosts';
 import { useUpcomingMatches, useMatches } from '../hooks/useMatches';
+import { useMyLeagues } from '../hooks/useLeagues';
 import { useToast } from '../components/Toast';
 import { Spinner, ErrorBox, EmptyState } from '../components/ui';
 import { Post } from '../types';
@@ -223,6 +224,7 @@ export default function Home() {
   const [filters, setFilters] = useState<PostFilters>({ sort: 'newest' });
   const { data: posts, isLoading, error, refetch } = usePosts(filters);
   const { data: upcoming } = useUpcomingMatches();
+  const { data: myLeagues } = useMyLeagues();
   const { data: matchData } = useMatches();
   const requestMutation = useRequestPost();
   const deleteMutation = useDeletePost();
@@ -294,6 +296,37 @@ export default function Home() {
           ) : (
             <div className="bg-indigo-50 rounded-xl p-4 text-center">
               <p className="text-sm text-indigo-600">No upcoming matches — <Link to="/post" className="font-semibold underline">post when you're free!</Link></p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Your Leagues */}
+      {user && (
+        <div className="mb-6">
+          <div className="flex justify-between items-center mb-3">
+            <h2 className="text-lg font-bold text-violet-700">🏆 Your Leagues</h2>
+            <Link to="/leagues" className="text-sm text-violet-600 font-medium hover:underline">Browse All →</Link>
+          </div>
+          {myLeagues && myLeagues.length > 0 ? (
+            <div className="space-y-2">
+              {myLeagues.slice(0, 3).map(league => (
+                <Link key={league.id} to={`/leagues/${league.slug}`} className="block bg-white rounded-xl shadow-sm p-3 border-l-4 border-violet-500 active:bg-violet-50 transition-colors">
+                  <div className="flex justify-between items-center">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-violet-700">{league.name}</span>
+                      {league.season && <span className="ml-2 text-xs text-gray-400">{league.season}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs bg-violet-100 text-violet-600 px-2 py-0.5 rounded-full">{league.member_count} members</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-violet-50 rounded-xl p-4 text-center">
+              <p className="text-sm text-violet-600">Join a league to compete in organized seasons! <Link to="/leagues" className="font-semibold underline">Browse Leagues</Link></p>
             </div>
           )}
         </div>

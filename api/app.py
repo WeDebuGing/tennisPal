@@ -2,7 +2,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from werkzeug.security import generate_password_hash, check_password_hash
-from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court, ReviewTag, PlayerReview
+from models import db, User, Availability, LookingToPlay, MatchInvite, Match, Notification, Court, ReviewTag, PlayerReview, League, LeagueMembership
 from notifications import notify_user
 from password_reset import password_reset_bp
 from email_verification import (
@@ -13,6 +13,7 @@ from datetime import datetime, date, timedelta
 import os
 import json
 import math
+import re
 from migrate_all import run_all as run_migrations
 
 # In release mode, serve the built frontend from frontend/dist
@@ -611,11 +612,27 @@ def send_invite():
     ).filter(MatchInvite.play_date == play_date).first()
     if existing:
         return jsonify(error='You already have a pending invite to this player for this date.'), 409
+    league_id = data.get('league_id')
+    if league_id:
+        league = League.query.get(league_id)
+        if not league or not league.is_active:
+            return jsonify(error='League not found.'), 404
+        if league.status != 'active':
+            return jsonify(error='League season is not active.'), 400
+        for pid in (uid, to_user_id):
+            m = LeagueMembership.query.filter_by(league_id=league_id, user_id=pid).first()
+            if not m or m.role == 'pending':
+                return jsonify(error=f'Player {pid} is not an active member of this league.'), 400
+        if league.start_date and play_date < league.start_date:
+            return jsonify(error='play_date is before the season start.'), 400
+        if league.end_date and play_date > league.end_date:
+            return jsonify(error='play_date is after the season end.'), 400
     inv = MatchInvite(
         from_user_id=uid, to_user_id=to_user_id,
         play_date=play_date,
         start_time=data['start_time'], end_time=data['end_time'],
         court=data.get('court', 'TBD'), match_type=data.get('match_type', 'singles'),
+        league_id=league_id,
     )
     db.session.add(inv)
     user = User.query.get(uid)
@@ -659,7 +676,9 @@ def accept_invite(invite_id):
                 if declined_user:
                     notify_user(declined_user, decline_msg, subject="Match request declined")
     match = Match(player1_id=inv.to_user_id, player2_id=inv.from_user_id,
-                  play_date=inv.play_date, match_type=inv.match_type)
+                  play_date=inv.play_date, match_type=inv.match_type,
+                  league_id=getattr(inv, 'league_id', None),
+                  is_challenge=getattr(inv, 'is_challenge', False))
     db.session.add(match)
     user = User.query.get(uid)
     requester = User.query.get(inv.from_user_id)
@@ -943,6 +962,8 @@ def confirm_score(match_id):
     action = data.get('action', 'confirm')
     if action == 'confirm':
         match.score_confirmed = True
+        # Apply league Elo if this is a league match
+        apply_league_elo(match)
     else:
         match.score_disputed = True
     db.session.commit()
@@ -1549,6 +1570,412 @@ if RELEASE_MODE and os.path.isdir(FRONTEND_DIST):
             return send_from_directory(FRONTEND_DIST, path)
         # Otherwise serve index.html for SPA client-side routing
         return send_from_directory(FRONTEND_DIST, 'index.html')
+
+
+# ── League Endpoints ──
+
+def slugify(text):
+    text = text.lower().strip()
+    text = re.sub(r'[^\w\s-]', '', text)
+    return re.sub(r'[\s_-]+', '-', text).strip('-')
+
+
+VALID_FORMATS = ('ladder', 'round_robin', 'flex')
+STATUS_ORDER = {'upcoming': 0, 'active': 1, 'completed': 2}
+
+
+def get_league_or_404(slug):
+    league = League.query.filter_by(slug=slug, is_active=True).first()
+    if not league:
+        return None
+    return league
+
+
+def require_organizer(league, uid):
+    m = LeagueMembership.query.filter_by(league_id=league.id, user_id=uid).first()
+    return m and m.role == 'organizer'
+
+
+@app.route('/api/leagues', methods=['POST'])
+@jwt_required()
+def create_league():
+    uid = int(get_jwt_identity())
+    data = request.get_json()
+    name = (data.get('name') or '').strip()
+    fmt = data.get('format')
+    if not name or not fmt:
+        return jsonify(error='name and format are required.'), 400
+    if fmt not in VALID_FORMATS:
+        return jsonify(error=f'format must be one of: {", ".join(VALID_FORMATS)}'), 400
+    if League.query.filter_by(name=name).first():
+        return jsonify(error='A league with this name already exists.'), 409
+    slug = slugify(name)
+    # Ensure slug uniqueness
+    base_slug = slug
+    counter = 2
+    while League.query.filter_by(slug=slug).first():
+        slug = f'{base_slug}-{counter}'
+        counter += 1
+    league = League(
+        name=name, slug=slug, format=fmt, city=data.get('city', 'Pittsburgh'),
+        ntrp_min=data.get('ntrp_min'), ntrp_max=data.get('ntrp_max'),
+        join_mode=data.get('join_mode', 'open'),
+        season_name=data.get('season_name'), min_matches=data.get('min_matches', 3),
+        created_by_id=uid,
+    )
+    if data.get('start_date'):
+        league.start_date = date.fromisoformat(data['start_date'])
+    if data.get('end_date'):
+        league.end_date = date.fromisoformat(data['end_date'])
+    if league.start_date and league.end_date and league.end_date <= league.start_date:
+        return jsonify(error='end_date must be after start_date.'), 400
+    if data.get('status'):
+        league.status = data['status']
+    db.session.add(league)
+    db.session.flush()
+    # Creator is auto-organizer
+    membership = LeagueMembership(league_id=league.id, user_id=uid, role='organizer')
+    db.session.add(membership)
+    db.session.commit()
+    return jsonify(league=league.to_dict()), 201
+
+
+@app.route('/api/leagues', methods=['GET'])
+def list_leagues():
+    q = League.query.filter_by(is_active=True)
+    city = request.args.get('city')
+    fmt = request.args.get('format')
+    ntrp = request.args.get('ntrp', type=float)
+    if city:
+        q = q.filter(League.city.ilike(f'%{city}%'))
+    if fmt:
+        q = q.filter_by(format=fmt)
+    if ntrp is not None:
+        q = q.filter((League.ntrp_min.is_(None)) | (League.ntrp_min <= ntrp))
+        q = q.filter((League.ntrp_max.is_(None)) | (League.ntrp_max >= ntrp))
+    return jsonify(leagues=[l.to_dict() for l in q.all()])
+
+
+@app.route('/api/leagues/<slug>', methods=['GET'])
+def get_league(slug):
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    return jsonify(league=league.to_dict())
+
+
+@app.route('/api/leagues/<slug>', methods=['PUT'])
+@jwt_required()
+def update_league(slug):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if not require_organizer(league, uid):
+        return jsonify(error='Only organizers can update the league.'), 403
+    data = request.get_json()
+    # Update simple fields
+    for field in ('name', 'city', 'ntrp_min', 'ntrp_max', 'join_mode', 'season_name', 'min_matches'):
+        if field in data:
+            setattr(league, field, data[field])
+    if 'start_date' in data:
+        league.start_date = date.fromisoformat(data['start_date']) if data['start_date'] else None
+    if 'end_date' in data:
+        league.end_date = date.fromisoformat(data['end_date']) if data['end_date'] else None
+    if league.start_date and league.end_date and league.end_date <= league.start_date:
+        db.session.rollback()
+        return jsonify(error='end_date must be after start_date.'), 400
+    # Status transitions
+    if 'status' in data:
+        new_status = data['status']
+        old_status = league.status
+        if new_status and old_status and STATUS_ORDER.get(new_status, -1) <= STATUS_ORDER.get(old_status, -1):
+            db.session.rollback()
+            return jsonify(error='Cannot set status backwards.'), 400
+        league.status = new_status
+        if new_status == 'active':
+            # Reset all member league_elo to 1200
+            for m in league.memberships:
+                m.league_elo = 1200
+    if 'name' in data:
+        league.slug = slugify(data['name'])
+    db.session.commit()
+    return jsonify(league=league.to_dict())
+
+
+@app.route('/api/leagues/<slug>', methods=['DELETE'])
+@jwt_required()
+def delete_league(slug):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if not require_organizer(league, uid):
+        return jsonify(error='Only organizers can delete the league.'), 403
+    league.is_active = False
+    db.session.commit()
+    return jsonify(message='League deleted.'), 200
+
+
+# ── Membership Endpoints ──
+
+@app.route('/api/leagues/<slug>/join', methods=['POST'])
+@jwt_required()
+def join_league(slug):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if league.join_mode == 'invite_only':
+        return jsonify(error='This league is invite-only.'), 403
+    existing = LeagueMembership.query.filter_by(league_id=league.id, user_id=uid).first()
+    if existing:
+        return jsonify(error='Already a member of this league.'), 409
+    user = User.query.get(uid)
+    if league.ntrp_min is not None and (user.ntrp is None or user.ntrp < league.ntrp_min):
+        return jsonify(error=f'Your NTRP must be at least {league.ntrp_min}.'), 400
+    if league.ntrp_max is not None and (user.ntrp is None or user.ntrp > league.ntrp_max):
+        return jsonify(error=f'Your NTRP must be at most {league.ntrp_max}.'), 400
+    role = 'member' if league.join_mode == 'open' else 'pending'
+    membership = LeagueMembership(league_id=league.id, user_id=uid, role=role)
+    db.session.add(membership)
+    if role == 'pending':
+        # Notify organizers
+        for m in league.memberships:
+            if m.role == 'organizer':
+                n = Notification(user_id=m.user_id, message=f"{user.name} requested to join {league.name}.")
+                db.session.add(n)
+    db.session.commit()
+    return jsonify(membership=membership.to_dict()), 201
+
+
+@app.route('/api/leagues/<slug>/leave', methods=['POST'])
+@jwt_required()
+def leave_league(slug):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    membership = LeagueMembership.query.filter_by(league_id=league.id, user_id=uid).first()
+    if not membership:
+        return jsonify(error='Not a member of this league.'), 404
+    if membership.role == 'organizer':
+        org_count = LeagueMembership.query.filter_by(league_id=league.id, role='organizer').count()
+        if org_count <= 1:
+            return jsonify(error='Cannot leave — you are the last organizer.'), 400
+    db.session.delete(membership)
+    db.session.commit()
+    return jsonify(message='Left the league.'), 200
+
+
+@app.route('/api/leagues/<slug>/members', methods=['GET'])
+def list_league_members(slug):
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    members = LeagueMembership.query.filter_by(league_id=league.id).all()
+    return jsonify(members=[m.to_dict() for m in members])
+
+
+@app.route('/api/leagues/<slug>/members/<int:user_id>/approve', methods=['POST'])
+@jwt_required()
+def approve_member(slug, user_id):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if not require_organizer(league, uid):
+        return jsonify(error='Only organizers can approve members.'), 403
+    membership = LeagueMembership.query.filter_by(league_id=league.id, user_id=user_id).first()
+    if not membership or membership.role != 'pending':
+        return jsonify(error='No pending membership found.'), 404
+    membership.role = 'member'
+    n = Notification(user_id=user_id, message=f"You've been approved to join {league.name}!")
+    db.session.add(n)
+    db.session.commit()
+    return jsonify(membership=membership.to_dict())
+
+
+@app.route('/api/leagues/<slug>/members/<int:user_id>/remove', methods=['POST'])
+@jwt_required()
+def remove_member(slug, user_id):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if not require_organizer(league, uid):
+        return jsonify(error='Only organizers can remove members.'), 403
+    membership = LeagueMembership.query.filter_by(league_id=league.id, user_id=user_id).first()
+    if not membership:
+        return jsonify(error='Member not found.'), 404
+    n = Notification(user_id=user_id, message=f"You've been removed from {league.name}.")
+    db.session.add(n)
+    db.session.delete(membership)
+    db.session.commit()
+    return jsonify(message='Member removed.'), 200
+
+
+@app.route('/api/leagues/<slug>/members/<int:user_id>/promote', methods=['POST'])
+@jwt_required()
+def promote_member(slug, user_id):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if not require_organizer(league, uid):
+        return jsonify(error='Only organizers can promote members.'), 403
+    membership = LeagueMembership.query.filter_by(league_id=league.id, user_id=user_id).first()
+    if not membership:
+        return jsonify(error='Member not found.'), 404
+    membership.role = 'organizer'
+    db.session.commit()
+    return jsonify(membership=membership.to_dict())
+
+
+# ── Standings ──
+
+def compute_league_standings(league):
+    """Compute standings from Match table for current season."""
+    match_q = Match.query.filter_by(league_id=league.id, score_confirmed=True)
+    if league.start_date:
+        match_q = match_q.filter(Match.play_date >= league.start_date)
+    if league.end_date:
+        match_q = match_q.filter(Match.play_date <= league.end_date)
+    matches = match_q.all()
+
+    # Build stats per user
+    stats = {}
+    for m in league.memberships:
+        if m.role == 'pending':
+            continue
+        stats[m.user_id] = {
+            'user_id': m.user_id, 'user_name': m.user.name if m.user else None,
+            'user_ntrp': m.user.ntrp if m.user else None,
+            'league_elo': m.league_elo, 'wins': 0, 'losses': 0,
+            'matches_played': 0, 'points': 0,
+        }
+
+    for match in matches:
+        for pid in (match.player1_id, match.player2_id):
+            if pid in stats:
+                stats[pid]['matches_played'] += 1
+                if match.winner_id == pid:
+                    stats[pid]['wins'] += 1
+                    stats[pid]['points'] += 3
+                else:
+                    stats[pid]['losses'] += 1
+                    stats[pid]['points'] += 1
+
+    standings = list(stats.values())
+    for s in standings:
+        s['win_pct'] = round(s['wins'] / s['matches_played'] * 100, 1) if s['matches_played'] > 0 else 0.0
+        s['qualified'] = s['matches_played'] >= league.min_matches
+
+    # Sort by format
+    if league.format == 'ladder':
+        standings.sort(key=lambda x: -x['league_elo'])
+    elif league.format == 'round_robin':
+        standings.sort(key=lambda x: (-x['win_pct'], -x['wins']))
+    else:  # flex
+        standings.sort(key=lambda x: (-x['points'], -x['win_pct'], -x['matches_played']))
+
+    for i, s in enumerate(standings, 1):
+        s['rank'] = i
+
+    return standings
+
+
+@app.route('/api/leagues/<slug>/standings', methods=['GET'])
+def league_standings(slug):
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    standings = compute_league_standings(league)
+    return jsonify(standings=standings)
+
+
+# ── League Matches ──
+
+@app.route('/api/leagues/<slug>/matches', methods=['GET'])
+def league_matches(slug):
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    q = Match.query.filter_by(league_id=league.id)
+    if league.start_date:
+        q = q.filter(Match.play_date >= league.start_date)
+    if league.end_date:
+        q = q.filter(Match.play_date <= league.end_date)
+    return jsonify(matches=[m.to_dict() for m in q.order_by(Match.play_date.desc()).all()])
+
+
+def calculate_elo_change(player_elo, opponent_elo, won, k=32):
+    expected = 1.0 / (1.0 + 10 ** ((opponent_elo - player_elo) / 400.0))
+    result = 1.0 if won else 0.0
+    return round(k * (result - expected))
+
+
+def apply_league_elo(match):
+    """Apply league Elo changes when a league match is confirmed."""
+    if not match.league_id or not match.score_confirmed or not match.winner_id:
+        return
+    m1 = LeagueMembership.query.filter_by(league_id=match.league_id, user_id=match.player1_id).first()
+    m2 = LeagueMembership.query.filter_by(league_id=match.league_id, user_id=match.player2_id).first()
+    if not m1 or not m2:
+        return
+    p1_won = match.winner_id == match.player1_id
+    change_p1 = calculate_elo_change(m1.league_elo, m2.league_elo, p1_won)
+    change_p2 = calculate_elo_change(m2.league_elo, m1.league_elo, not p1_won)
+    m1.league_elo += change_p1
+    m2.league_elo += change_p2
+    match.elo_change_p1 = change_p1
+    match.elo_change_p2 = change_p2
+
+
+# ── Ladder Challenge ──
+
+@app.route('/api/leagues/<slug>/challenge/<int:target_user_id>', methods=['POST'])
+@jwt_required()
+def challenge_player(slug, target_user_id):
+    uid = int(get_jwt_identity())
+    league = get_league_or_404(slug)
+    if not league:
+        return jsonify(error='League not found.'), 404
+    if league.format != 'ladder':
+        return jsonify(error='Challenges are only available in ladder leagues.'), 400
+    if league.status != 'active':
+        return jsonify(error='Season is not active.'), 400
+    if uid == target_user_id:
+        return jsonify(error='Cannot challenge yourself.'), 400
+    challenger_m = LeagueMembership.query.filter_by(league_id=league.id, user_id=uid).first()
+    target_m = LeagueMembership.query.filter_by(league_id=league.id, user_id=target_user_id).first()
+    if not challenger_m or challenger_m.role == 'pending':
+        return jsonify(error='You are not an active member of this league.'), 400
+    if not target_m or target_m.role == 'pending':
+        return jsonify(error='Target player is not an active member of this league.'), 400
+    # Check rank difference
+    standings = compute_league_standings(league)
+    challenger_rank = next((s['rank'] for s in standings if s['user_id'] == uid), None)
+    target_rank = next((s['rank'] for s in standings if s['user_id'] == target_user_id), None)
+    if challenger_rank and target_rank and target_rank < challenger_rank and (challenger_rank - target_rank) > 10:
+        return jsonify(error='Can only challenge players up to 10 ranks above you.'), 400
+    data = request.get_json() or {}
+    play_date = data.get('play_date', (date.today() + timedelta(days=7)).isoformat())
+    invite = MatchInvite(
+        from_user_id=uid, to_user_id=target_user_id,
+        play_date=date.fromisoformat(play_date),
+        start_time=data.get('start_time', '10:00'),
+        end_time=data.get('end_time', '12:00'),
+        court=data.get('court', 'TBD'),
+        match_type='singles', status='pending',
+        league_id=league.id, is_challenge=True,
+    )
+    db.session.add(invite)
+    user = User.query.get(uid)
+    n = Notification(user_id=target_user_id, message=f"{user.name} challenged you in {league.name}! 🎾")
+    db.session.add(n)
+    db.session.commit()
+    return jsonify(invite=invite.to_dict(), league_id=league.id), 201
 
 
 # ── Init ──
